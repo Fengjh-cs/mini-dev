@@ -2,6 +2,16 @@
 
 一个极简 CLI coding agent（简历项目）。核心思路：**自己实现 agent 循环 / 文件编辑 / 上下文管理**，其余（CLI 界面、沙箱、diff、语法解析）复用成熟开源组件。
 
+## 项目亮点
+
+- **从零自研 agent 核心**：agent loop、工具系统、上下文管理、文件编辑、权限审批全部自己实现，未套用现成 Agent SDK。
+- **Provider 抽象**：走 Chat Completions 接口 + `OPENAI_BASE_URL`，一行配置切换 OpenAI / DeepSeek / OpenRouter。
+- **结构化编辑 + 快照回滚**：`edit_file` 精确替换（唯一性校验、原子写），编辑前快照可回滚。
+- **RepoMap 上下文压缩**：tree-sitter 提取仓库符号索引，在 token 预算内把整仓压成结构图注入提示词。
+- **沙箱 + 权限双保险**：Docker 沙箱 + Plan/Act 双模式 + 工具风险分级审批。
+- **MCP 外部工具接入**：自研 MCP stdio 客户端，可挂任意 stdio MCP server。
+- **工程化**：47 个 mock 测试（不依赖 API key）、评测 harness、GitHub Actions CI、MIT 协议。
+
 ## 状态
 
 - [x] Phase 0 — 项目脚手架
