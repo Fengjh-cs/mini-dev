@@ -2,6 +2,8 @@
 
 一个极简 CLI coding agent（简历项目）。核心思路：**自己实现 agent 循环 / 文件编辑 / 上下文管理**，其余（CLI 界面、沙箱、diff、语法解析）复用成熟开源组件。
 
+![demo](demo.gif)
+
 ## 项目亮点
 
 - **从零自研 agent 核心**：agent loop、工具系统、上下文管理、文件编辑、权限审批全部自己实现，未套用现成 Agent SDK。
@@ -64,5 +66,24 @@ mindev eval                                             # 内置评测
 ```
 
 ## 架构
+
+```mermaid
+flowchart TD
+    User([User]) --> CLI[CLI]
+    CLI --> Loop[Agent Loop]
+    Loop --> Provider[LLM Provider: OpenAI / DeepSeek / OpenRouter]
+    Provider --> Model([LLM])
+    Loop --> Registry[Tool Registry: jsonschema validation]
+    Registry --> Read[read_file]
+    Registry --> Edit[write_file / edit_file]
+    Registry --> Bash[bash]
+    Registry --> Explore[explore subagent]
+    Registry --> MCP[MCP tools]
+    Bash --> Sandbox[Sandbox: local / docker]
+    Loop --> Permissions[Permissions: Plan/Act + approval]
+    Loop --> Context[Context: RepoMap + compaction]
+    Loop --> Session[Session store]
+    Loop --> Trace[Trace recorder]
+```
 
 详见 [DESIGN.md](DESIGN.md)。
