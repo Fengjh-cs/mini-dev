@@ -15,6 +15,7 @@ MAX_EDIT_CHARS = 100_000
 class WriteFileTool(Tool):
     name = "write_file"
     description = "Create a new file, or overwrite an existing file, with the given content."
+    risk = "write"
 
     def __init__(self, snapshots: SnapshotStore | None = None) -> None:
         self._snapshots = snapshots
@@ -50,6 +51,7 @@ class EditFileTool(Tool):
         "Replace the unique occurrence of old_string in a file with new_string. "
         "old_string must appear exactly once, otherwise the edit is rejected."
     )
+    risk = "write"
 
     def __init__(self, snapshots: SnapshotStore | None = None) -> None:
         self._snapshots = snapshots

@@ -11,6 +11,7 @@ class BashTool(Tool):
         "Run a shell command and return its combined stdout/stderr. "
         "Use for listing files, running tests, git, or build commands."
     )
+    risk = "command"
 
     def __init__(self, sandbox: Sandbox | None = None) -> None:
         self._sandbox = sandbox or LocalSandbox()

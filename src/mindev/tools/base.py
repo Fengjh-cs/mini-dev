@@ -6,6 +6,7 @@ from abc import ABC, abstractmethod
 class Tool(ABC):
     name: str = ""
     description: str = ""
+    risk: str = "read"  # "read" | "write" | "command"
 
     @abstractmethod
     def parameters(self) -> dict:

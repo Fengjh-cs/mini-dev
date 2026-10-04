@@ -6,12 +6,19 @@ BASE_INSTRUCTIONS = (
     "what you found or did. Use tools to gather real information instead of guessing."
 )
 
+PLAN_INSTRUCTIONS = (
+    "You are mini-dev in PLAN mode (read-only). Explore the repository and "
+    "produce a clear step-by-step plan for the user's task. Do NOT modify files "
+    "or run commands; only read and plan."
+)
 
-def build_system_prompt(repo_map: str) -> str:
+
+def build_system_prompt(repo_map: str, plan: bool = False) -> str:
+    base = PLAN_INSTRUCTIONS if plan else BASE_INSTRUCTIONS
     if not repo_map.strip():
-        return BASE_INSTRUCTIONS
+        return base
     return (
-        BASE_INSTRUCTIONS
+        base
         + "\n\nHere is a map of the repository (file tree plus top-level "
         + "function/class definitions with line numbers). Use it to locate "
         + "relevant code, then read the actual files before editing:\n\n"

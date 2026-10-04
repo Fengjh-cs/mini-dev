@@ -10,6 +10,14 @@ def _print_tool_call(call) -> None:
     print(f"\n  -> {call.name}({args})", flush=True)
 
 
+def _interactive_approve(tool_name: str, arguments: dict) -> bool:
+    print(f"\n  [approval] run tool '{tool_name}' with arguments:")
+    for key, value in arguments.items():
+        print(f"      {key}: {value}")
+    answer = input("      Approve? [y/N] ").strip().lower()
+    return answer in ("y", "yes")
+
+
 def _cmd_run(args: argparse.Namespace) -> int:
     from dotenv import load_dotenv
 
@@ -24,6 +32,7 @@ def _cmd_run(args: argparse.Namespace) -> int:
         return 1
 
     from .agent.loop import AgentLoop
+    from .agent.permissions import Mode, PermissionPolicy
     from .context.prompter import build_system_prompt
     from .context.repomap import RepoMap
     from .llm.openai import OpenAIProvider
@@ -35,22 +44,29 @@ def _cmd_run(args: argparse.Namespace) -> int:
     from .tools.registry import ToolRegistry
     from .tools.snapshot import SnapshotStore
 
+    mode = Mode.READONLY if args.plan else Mode.READWRITE
     repo_map = "" if args.no_repomap else RepoMap().build(os.getcwd())
-    provider = OpenAIProvider(model=args.model, system=build_system_prompt(repo_map))
+    provider = OpenAIProvider(
+        model=args.model, system=build_system_prompt(repo_map, plan=args.plan)
+    )
+
     snapshots = SnapshotStore()
-    sandbox = DockerSandbox() if args.sandbox == "docker" else LocalSandbox()
-    tools = ToolRegistry(
-        [
-            ReadTool(),
+    registry_tools = [ReadTool()]
+    if not args.plan:
+        sandbox = DockerSandbox() if args.sandbox == "docker" else LocalSandbox()
+        registry_tools += [
             WriteFileTool(snapshots),
             EditFileTool(snapshots),
             BashTool(sandbox),
         ]
-    )
-    loop = AgentLoop(provider, tools, observer=_print_tool_call)
+    tools = ToolRegistry(registry_tools)
+
+    approver = None if args.yes else _interactive_approve
+    policy = PermissionPolicy(mode=mode, approver=approver)
+    loop = AgentLoop(provider, tools, observer=_print_tool_call, policy=policy)
 
     task = " ".join(args.task)
-    print(f"Task: {task}\n", flush=True)
+    print(f"Task: {task}\n[mode: {mode.value}]\n", flush=True)
     result = loop.run(task)
     print("\n" + "=" * 40)
     print(result)
@@ -79,6 +95,16 @@ def build_parser() -> argparse.ArgumentParser:
         "--no-repomap",
         action="store_true",
         help="Don't inject a repo map into the system prompt.",
+    )
+    run_p.add_argument(
+        "--plan",
+        action="store_true",
+        help="Read-only plan mode: explore and produce a plan, make no changes.",
+    )
+    run_p.add_argument(
+        "--yes",
+        action="store_true",
+        help="Auto-approve all risky tool calls (skip confirmation).",
     )
     run_p.set_defaults(func=_cmd_run)
 

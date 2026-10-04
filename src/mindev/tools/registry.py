@@ -10,6 +10,10 @@ class ToolRegistry:
     def schemas(self) -> list[dict]:
         return [tool.schema() for tool in self._tools.values()]
 
+    def risk(self, name: str) -> str:
+        tool = self._tools.get(name)
+        return tool.risk if tool else "read"
+
     def run(self, name: str, arguments: dict) -> str:
         tool = self._tools.get(name)
         if tool is None:
