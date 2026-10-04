@@ -33,3 +33,15 @@ class LLMProvider(ABC):
     @abstractmethod
     def add_tool_result(self, call_id: str, output: str) -> None:
         """Append a tool result to the conversation."""
+
+    def context_tokens(self) -> int:
+        """Estimated token count of the current context (0 = not tracked)."""
+        return 0
+
+    def compact(self, keep_messages: int = 6) -> str:
+        """Summarize older messages, keeping the most recent ones.
+
+        Returns the summary text, or "" if nothing was compacted. No-op by
+        default; providers that track context override it.
+        """
+        return ""

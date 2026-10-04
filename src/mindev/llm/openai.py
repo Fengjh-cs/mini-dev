@@ -78,3 +78,41 @@ class OpenAIProvider(LLMProvider):
         self._messages.append(
             {"role": "tool", "tool_call_id": call_id, "content": output}
         )
+
+    def context_tokens(self) -> int:
+        total = 0
+        for m in self._messages:
+            total += len(m.get("content") or "")
+            for tc in m.get("tool_calls", []):
+                fn = tc.get("function", {})
+                total += len(fn.get("name", "")) + len(fn.get("arguments", ""))
+        return total // 4
+
+    def compact(self, keep_messages: int = 6) -> str:
+        system = [m for m in self._messages if m.get("role") == "system"]
+        rest = [m for m in self._messages if m.get("role") != "system"]
+        if len(rest) <= keep_messages:
+            return ""
+        old, recent = rest[:-keep_messages], rest[-keep_messages:]
+        summary = self._summarize(old)
+        self._messages = system + [
+            {"role": "user", "content": "[Earlier conversation summary]\n" + summary}
+        ] + recent
+        return summary
+
+    def _summarize(self, messages: list[dict]) -> str:
+        transcript = "\n".join(
+            f"{m.get('role')}: {str(m.get('content', ''))[:1000]}" for m in messages
+        )
+        resp = self._client.chat.completions.create(
+            model=self.model,
+            messages=[
+                {
+                    "role": "system",
+                    "content": "Summarize this coding-agent conversation into a "
+                    "concise list of key facts, decisions, and pending tasks.",
+                },
+                {"role": "user", "content": transcript},
+            ],
+        )
+        return resp.choices[0].message.content or ""

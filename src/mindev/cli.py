@@ -77,7 +77,14 @@ def _cmd_run(args: argparse.Namespace) -> int:
 
     approver = None if args.yes else _interactive_approve
     policy = PermissionPolicy(mode=mode, approver=approver)
-    loop = AgentLoop(provider, tools, observer=_print_tool_call, policy=policy)
+    compact_threshold = args.compact_threshold if args.compact_threshold > 0 else None
+    loop = AgentLoop(
+        provider,
+        tools,
+        observer=_print_tool_call,
+        policy=policy,
+        compact_threshold=compact_threshold,
+    )
 
     task = " ".join(args.task)
     print(f"Task: {task}\n[mode: {mode.value}]\n", flush=True)
@@ -153,6 +160,13 @@ def build_parser() -> argparse.ArgumentParser:
         "--yes",
         action="store_true",
         help="Auto-approve all risky tool calls (skip confirmation).",
+    )
+    run_p.add_argument(
+        "--compact-threshold",
+        type=int,
+        default=20000,
+        help="Auto-compact history when context exceeds this many tokens "
+        "(0 disables). Default: 20000.",
     )
     run_p.add_argument(
         "--mcp",
