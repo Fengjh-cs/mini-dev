@@ -118,3 +118,4 @@ mini-dev/
 - **Phase 1**：`pytest` 9 passed（loop / tools 用 mock LLM 测试）；`mindev run` 无 key 时正确报错、退出码 1。
 - **base_url 支持**：`pytest` 14 passed（新增 5 个 provider 测试：base_url 参数/环境变量、tool call 解析、最终文本、tool 结果回灌）。
 - **Phase 2**：`pytest` 29 passed（编辑 9 + 沙箱 6，共 15 个新测试）；`mindev run --help` 显示 `--sandbox {local,docker}`。
+- **Phase 3**：`pytest` 35 passed（新增 6 个 RepoMap 测试）；真实仓库 RepoMap 正确列出文件树 + 顶层符号/行号。

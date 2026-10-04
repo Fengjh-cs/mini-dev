@@ -24,6 +24,8 @@ def _cmd_run(args: argparse.Namespace) -> int:
         return 1
 
     from .agent.loop import AgentLoop
+    from .context.prompter import build_system_prompt
+    from .context.repomap import RepoMap
     from .llm.openai import OpenAIProvider
     from .sandbox.docker import DockerSandbox
     from .sandbox.local import LocalSandbox
@@ -33,7 +35,8 @@ def _cmd_run(args: argparse.Namespace) -> int:
     from .tools.registry import ToolRegistry
     from .tools.snapshot import SnapshotStore
 
-    provider = OpenAIProvider(model=args.model)
+    repo_map = "" if args.no_repomap else RepoMap().build(os.getcwd())
+    provider = OpenAIProvider(model=args.model, system=build_system_prompt(repo_map))
     snapshots = SnapshotStore()
     sandbox = DockerSandbox() if args.sandbox == "docker" else LocalSandbox()
     tools = ToolRegistry(
@@ -71,6 +74,11 @@ def build_parser() -> argparse.ArgumentParser:
         choices=["local", "docker"],
         default="local",
         help="Where to run bash commands (default: local).",
+    )
+    run_p.add_argument(
+        "--no-repomap",
+        action="store_true",
+        help="Don't inject a repo map into the system prompt.",
     )
     run_p.set_defaults(func=_cmd_run)
 
