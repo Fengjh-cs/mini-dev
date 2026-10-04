@@ -91,6 +91,36 @@ def _cmd_run(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_eval(args: argparse.Namespace) -> int:
+    from dotenv import load_dotenv
+
+    load_dotenv()
+
+    if not os.getenv("OPENAI_API_KEY"):
+        print(
+            "Error: OPENAI_API_KEY is not set. Copy .env.example to .env and "
+            "add your OpenAI API key.",
+            file=sys.stderr,
+        )
+        return 1
+
+    import tempfile
+
+    from .eval import default_tasks, run_eval
+    from .llm.openai import OpenAIProvider
+
+    with tempfile.TemporaryDirectory() as root:
+        results = run_eval(
+            lambda: OpenAIProvider(model=args.model), default_tasks(), root
+        )
+
+    passed = sum(1 for r in results if r.passed)
+    for r in results:
+        print(f"  [{'PASS' if r.passed else 'FAIL'}] {r.name}")
+    print(f"\n{passed}/{len(results)} passed")
+    return 0 if passed == len(results) else 1
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="mindev",
@@ -133,6 +163,10 @@ def build_parser() -> argparse.ArgumentParser:
         "@modelcontextprotocol/server-filesystem .'",
     )
     run_p.set_defaults(func=_cmd_run)
+
+    eval_p = sub.add_parser("eval", help="Run the built-in evaluation tasks.")
+    eval_p.add_argument("--model", default=None, help="Override the OpenAI model.")
+    eval_p.set_defaults(func=_cmd_eval)
 
     return parser
 
