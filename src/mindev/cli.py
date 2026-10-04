@@ -112,6 +112,20 @@ def _cmd_run(args: argparse.Namespace) -> int:
         recorder=recorder,
     )
 
+    checkpoint_hash = None
+    if args.checkpoint:
+        from .agent.checkpoint import GitCheckpoint
+
+        cp = GitCheckpoint(cwd=os.getcwd())
+        checkpoint_hash = cp.commit()
+        if checkpoint_hash:
+            print(
+                f"[checkpoint] committed {checkpoint_hash[:7]} — "
+                f"revert with: git reset --hard {checkpoint_hash[:7]}"
+            )
+        else:
+            print("[checkpoint] clean tree, nothing to commit")
+
     task = " ".join(args.task)
     print(f"Task: {task}\n[mode: {mode.value}]\n", flush=True)
     try:
@@ -207,6 +221,11 @@ def build_parser() -> argparse.ArgumentParser:
         "--stream",
         action="store_true",
         help="Stream the model's tokens as they are generated.",
+    )
+    run_p.add_argument(
+        "--checkpoint",
+        action="store_true",
+        help="Commit current changes before running, so edits can be reverted via git.",
     )
     run_p.add_argument(
         "--compact-threshold",
