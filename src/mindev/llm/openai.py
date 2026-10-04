@@ -1,14 +1,18 @@
-"""OpenAI provider built on the Responses API."""
+"""OpenAI-compatible provider built on the Chat Completions API.
+
+We use Chat Completions (not the Responses API) so the same provider works with
+any OpenAI-compatible backend — OpenAI, DeepSeek, OpenRouter, etc. — simply by
+setting ``OPENAI_BASE_URL`` (or passing ``base_url=``).
+"""
 
 import json
 import os
-from typing import Any
 
 from openai import OpenAI
 
 from .base import LLMProvider, ToolCall, Turn
 
-DEFAULT_MODEL = "gpt-5-codex"
+DEFAULT_MODEL = "gpt-5-mini"
 DEFAULT_SYSTEM = (
     "You are mini-dev, a coding agent. Complete the user's task by using the "
     "available tools to read files and run commands, then summarize what you "
@@ -16,56 +20,61 @@ DEFAULT_SYSTEM = (
 )
 
 
-def _extract_text(item: Any) -> str:
-    parts: list[str] = []
-    for block in getattr(item, "content", []) or []:
-        text = getattr(block, "text", None)
-        if text:
-            parts.append(text)
-    return "".join(parts)
-
-
 class OpenAIProvider(LLMProvider):
     def __init__(
         self,
         model: str | None = None,
         api_key: str | None = None,
+        base_url: str | None = None,
         system: str | None = None,
     ) -> None:
         self.model = model or os.getenv("MINIDEV_MODEL", DEFAULT_MODEL)
-        self._client = OpenAI(api_key=api_key or os.getenv("OPENAI_API_KEY"))
-        self._system = system or DEFAULT_SYSTEM
-        self._input: list[Any] = []
+        self._client = OpenAI(
+            api_key=api_key or os.getenv("OPENAI_API_KEY"),
+            base_url=base_url or os.getenv("OPENAI_BASE_URL") or None,
+        )
+        system = system if system is not None else DEFAULT_SYSTEM
+        self._messages: list[dict] = []
+        if system:
+            self._messages.append({"role": "system", "content": system})
 
     def add_user(self, content: str) -> None:
-        self._input.append({"role": "user", "content": content})
+        self._messages.append({"role": "user", "content": content})
 
     def send(self, tools: list[dict]) -> Turn:
-        response = self._client.responses.create(
-            model=self.model,
-            input=self._input,
-            tools=tools,
-            instructions=self._system,
-        )
-        # Keep the model's output in history verbatim (the documented pattern).
-        self._input.extend(response.output)
+        kwargs: dict = {"model": self.model, "messages": self._messages}
+        if tools:
+            kwargs["tools"] = tools
+        response = self._client.chat.completions.create(**kwargs)
+        message = response.choices[0].message
 
-        text = ""
+        assistant: dict = {"role": "assistant", "content": message.content or ""}
+        if message.tool_calls:
+            assistant["tool_calls"] = [
+                {
+                    "id": tc.id,
+                    "type": "function",
+                    "function": {
+                        "name": tc.function.name,
+                        "arguments": tc.function.arguments,
+                    },
+                }
+                for tc in message.tool_calls
+            ]
+        self._messages.append(assistant)
+
         tool_calls: list[ToolCall] = []
-        for item in response.output:
-            if item.type == "message":
-                text += _extract_text(item)
-            elif item.type == "function_call":
-                try:
-                    arguments = json.loads(item.arguments or "{}")
-                except json.JSONDecodeError:
-                    arguments = {"_raw": item.arguments}
-                tool_calls.append(
-                    ToolCall(id=item.call_id, name=item.name, arguments=arguments)
-                )
-        return Turn(text=text, tool_calls=tool_calls)
+        for tc in message.tool_calls or []:
+            try:
+                arguments = json.loads(tc.function.arguments or "{}")
+            except json.JSONDecodeError:
+                arguments = {"_raw": tc.function.arguments}
+            tool_calls.append(
+                ToolCall(id=tc.id, name=tc.function.name, arguments=arguments)
+            )
+        return Turn(text=message.content or "", tool_calls=tool_calls)
 
     def add_tool_result(self, call_id: str, output: str) -> None:
-        self._input.append(
-            {"type": "function_call_output", "call_id": call_id, "output": output}
+        self._messages.append(
+            {"role": "tool", "tool_call_id": call_id, "content": output}
         )

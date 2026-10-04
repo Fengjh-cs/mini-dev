@@ -27,7 +27,8 @@ mindev run "读一下 README.md，用一句话总结它讲了什么"
 mindev run "列出当前目录的文件"
 ```
 
-> 默认模型 `gpt-5-codex`（可用 `MINIDEV_MODEL` 环境变量覆盖）。
+> 默认模型 `gpt-5-mini`（可用 `MINIDEV_MODEL` 环境变量覆盖；`gpt-5` 系列里带 `-codex` 的模型需更高权限，普通账号无访问权限）。
+> 支持任意 OpenAI 兼容后端：设 `OPENAI_BASE_URL` 即可切换 DeepSeek（`https://api.deepseek.com`）、OpenRouter（`https://openrouter.ai/api/v1`）等。
 > ⚠️ Phase 1 的命令工具**直接在宿主机上执行、无沙箱**，仅用于你自己信任的本地代码。
 
 ## 架构
