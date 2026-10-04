@@ -26,11 +26,21 @@ def _cmd_run(args: argparse.Namespace) -> int:
     from .agent.loop import AgentLoop
     from .llm.openai import OpenAIProvider
     from .tools.bash import BashTool
+    from .tools.edit import EditFileTool, WriteFileTool
     from .tools.read import ReadTool
     from .tools.registry import ToolRegistry
+    from .tools.snapshot import SnapshotStore
 
     provider = OpenAIProvider(model=args.model)
-    tools = ToolRegistry([ReadTool(), BashTool()])
+    snapshots = SnapshotStore()
+    tools = ToolRegistry(
+        [
+            ReadTool(),
+            WriteFileTool(snapshots),
+            EditFileTool(snapshots),
+            BashTool(),
+        ]
+    )
     loop = AgentLoop(provider, tools, observer=_print_tool_call)
 
     task = " ".join(args.task)
