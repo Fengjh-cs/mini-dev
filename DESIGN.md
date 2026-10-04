@@ -115,3 +115,4 @@ mini-dev/
 ## 9. 验证记录
 
 - **Phase 0**：`pip install -e ".[dev]"` 成功；`pytest` 1 passed；`mindev --help` 正常打印帮助。
+- **Phase 1**：`pytest` 9 passed（loop / tools 用 mock LLM 测试）；`mindev run` 无 key 时正确报错、退出码 1。
