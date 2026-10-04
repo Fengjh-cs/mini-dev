@@ -85,12 +85,18 @@ def _cmd_run(args: argparse.Namespace) -> int:
     approver = None if args.yes else _interactive_approve
     policy = PermissionPolicy(mode=mode, approver=approver)
     compact_threshold = args.compact_threshold if args.compact_threshold > 0 else None
+    recorder = None
+    if args.trace:
+        from .agent.trace import TraceRecorder
+
+        recorder = TraceRecorder(args.trace)
     loop = AgentLoop(
         provider,
         tools,
         observer=_print_tool_call,
         policy=policy,
         compact_threshold=compact_threshold,
+        recorder=recorder,
     )
 
     task = " ".join(args.task)
@@ -104,6 +110,12 @@ def _cmd_run(args: argparse.Namespace) -> int:
             client.close()
     print("\n" + "=" * 40)
     print(result)
+    if recorder is not None:
+        s = recorder.summarize()
+        print(
+            f"\n[trace] {s['tool_calls']} tool calls, "
+            f"{s['total_ms']} ms, {s['events']} events"
+        )
     return 0
 
 
@@ -190,6 +202,12 @@ def build_parser() -> argparse.ArgumentParser:
         default=None,
         metavar="FILE",
         help="Persist the conversation to FILE and resume it on the next run.",
+    )
+    run_p.add_argument(
+        "--trace",
+        default=None,
+        metavar="FILE",
+        help="Write a JSONL trace of tool calls to FILE.",
     )
     run_p.add_argument(
         "--mcp",
