@@ -121,3 +121,4 @@ mini-dev/
 - **Phase 3**：`pytest` 35 passed（新增 6 个 RepoMap 测试）；真实仓库 RepoMap 正确列出文件树 + 顶层符号/行号。
 - **Phase 4**：`pytest` 42 passed（新增 7 个权限测试：read 放行、只读拒绝 write/command、approver 允许/拒绝、拒绝后文件不变）；CLI 显示 `--plan` / `--yes`。
 - **Phase 5**：`pytest` 47 passed（MCP 3 + eval 2）；`python demo.py` 无 key 跑通 RepoMap + 脚本化 agent；新增 CI workflow + MIT LICENSE。
+- **面试增强（上下文压缩 / 工具校验 / LLM-Judge / 会话持久化 / 观测追踪）**：`pytest` 69 passed（新增 22 个测试）。

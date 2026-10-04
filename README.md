@@ -5,12 +5,14 @@
 ## 项目亮点
 
 - **从零自研 agent 核心**：agent loop、工具系统、上下文管理、文件编辑、权限审批全部自己实现，未套用现成 Agent SDK。
-- **Provider 抽象**：走 Chat Completions 接口 + `OPENAI_BASE_URL`，一行配置切换 OpenAI / DeepSeek / OpenRouter。
-- **结构化编辑 + 快照回滚**：`edit_file` 精确替换（唯一性校验、原子写），编辑前快照可回滚。
-- **RepoMap 上下文压缩**：tree-sitter 提取仓库符号索引，在 token 预算内把整仓压成结构图注入提示词。
+- **Provider 抽象**：Chat Completions + `OPENAI_BASE_URL`，一行切换 OpenAI / DeepSeek / OpenRouter。
+- **上下文工程**：tree-sitter RepoMap 仓库压缩 + 超阈值自动 compaction（摘要即工作记忆，保留近期上下文）。
+- **工具可靠性**：jsonschema 入参校验，坏参数结构化报错回灌模型自纠。
+- **结构化编辑 + 回滚**：`edit_file` 精确替换（唯一性校验、原子写）+ 编辑前快照可回滚。
 - **沙箱 + 权限双保险**：Docker 沙箱 + Plan/Act 双模式 + 工具风险分级审批。
-- **MCP 外部工具接入**：自研 MCP stdio 客户端，可挂任意 stdio MCP server。
-- **工程化**：47 个 mock 测试（不依赖 API key）、评测 harness、GitHub Actions CI、MIT 协议。
+- **评测体系**：文件系统硬校验 + LLM-as-Judge 软评分 + 通过率/平均分指标。
+- **MCP + 会话 + 观测**：自研 MCP stdio 客户端、`--session` 断点续跑、`--trace` JSONL 追踪。
+- **工程化**：69 个 mock 测试（不依赖 API key）、GitHub Actions CI、MIT 协议。
 
 ## 状态
 
