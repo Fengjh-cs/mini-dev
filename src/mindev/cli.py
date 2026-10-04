@@ -51,6 +51,13 @@ def _cmd_run(args: argparse.Namespace) -> int:
         model=args.model, system=build_system_prompt(repo_map, plan=args.plan)
     )
 
+    session_store = None
+    if args.session:
+        from .agent.session import SessionStore
+
+        session_store = SessionStore(args.session)
+        session_store.load(provider)
+
     snapshots = SnapshotStore()
     registry_tools = [ReadTool()]
     if not args.plan:
@@ -91,6 +98,8 @@ def _cmd_run(args: argparse.Namespace) -> int:
     try:
         result = loop.run(task)
     finally:
+        if session_store is not None:
+            session_store.save(provider)
         for client in mcp_clients:
             client.close()
     print("\n" + "=" * 40)
@@ -175,6 +184,12 @@ def build_parser() -> argparse.ArgumentParser:
         default=20000,
         help="Auto-compact history when context exceeds this many tokens "
         "(0 disables). Default: 20000.",
+    )
+    run_p.add_argument(
+        "--session",
+        default=None,
+        metavar="FILE",
+        help="Persist the conversation to FILE and resume it on the next run.",
     )
     run_p.add_argument(
         "--mcp",

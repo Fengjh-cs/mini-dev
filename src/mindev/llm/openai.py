@@ -116,3 +116,9 @@ class OpenAIProvider(LLMProvider):
             ],
         )
         return resp.choices[0].message.content or ""
+
+    def export_state(self) -> dict:
+        return {"messages": list(self._messages)}
+
+    def restore_state(self, state: dict) -> None:
+        self._messages = list(state.get("messages", []))

@@ -45,3 +45,11 @@ class LLMProvider(ABC):
         default; providers that track context override it.
         """
         return ""
+
+    def export_state(self) -> dict:
+        """Serializable snapshot of the conversation (default: empty)."""
+        return {}
+
+    def restore_state(self, state: dict) -> None:
+        """Restore conversation state from a snapshot (default: no-op)."""
+        pass
