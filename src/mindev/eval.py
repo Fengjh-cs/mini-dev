@@ -1,11 +1,12 @@
 """A tiny evaluation harness for mini-dev.
 
 Runs the agent on a set of tasks in isolated directories and checks the
-resulting filesystem to decide pass/fail. Works with any provider — a real LLM
-or a scripted/mock one for deterministic testing.
+resulting filesystem (hard check) plus, optionally, an LLM judge that scores
+the output against a rubric (soft check).
 """
 
 import os
+import re
 from collections.abc import Callable
 from dataclasses import dataclass
 
@@ -22,6 +23,7 @@ class Task:
     prompt: str
     check: Callable[[str], bool]
     setup: Callable[[str], None] = lambda d: None
+    rubric: str | None = None  # optional rubric for an LLM judge
 
 
 @dataclass
@@ -29,14 +31,37 @@ class EvalResult:
     name: str
     passed: bool
     output: str
+    score: float | None = None  # soft score in [0, 1], when a judge is used
+
+
+class LLMJudge:
+    """Scores an agent's output against a rubric using a fresh LLM provider."""
+
+    def __init__(self, provider_factory) -> None:
+        self._factory = provider_factory
+
+    def score(self, task: Task, output: str) -> float:
+        provider = self._factory()
+        rubric = task.rubric or "Correctness and completeness."
+        provider.add_user(
+            f"Task: {task.prompt}\n"
+            f"Rubric: {rubric}\n\n"
+            f"Agent output:\n{output}\n\n"
+            "Score the output from 0 to 10. Reply with only the integer."
+        )
+        turn = provider.send([])
+        match = re.search(r"\d+", turn.text)
+        if not match:
+            return 0.0
+        return min(10, int(match.group())) / 10.0
 
 
 def _default_tools() -> ToolRegistry:
     return ToolRegistry([ReadTool(), WriteFileTool(), EditFileTool(), BashTool()])
 
 
-def run_eval(provider_factory, tasks, root, tools=None) -> list[EvalResult]:
-    """Run each task in its own subdirectory, then check the result."""
+def run_eval(provider_factory, tasks, root, tools=None, judge=None) -> list[EvalResult]:
+    """Run each task in its own subdirectory, then check + score the result."""
     results = []
     for task in tasks:
         workdir = os.path.join(root, task.name)
@@ -51,8 +76,20 @@ def run_eval(provider_factory, tasks, root, tools=None) -> list[EvalResult]:
         finally:
             os.chdir(original)
 
-        results.append(EvalResult(task.name, task.check(workdir), output))
+        score = judge.score(task, output) if judge is not None else None
+        results.append(EvalResult(task.name, task.check(workdir), output, score))
     return results
+
+
+def summarize(results: list[EvalResult]) -> dict:
+    passed = sum(1 for r in results if r.passed)
+    scores = [r.score for r in results if r.score is not None]
+    return {
+        "total": len(results),
+        "passed": passed,
+        "pass_rate": passed / len(results) if results else 0.0,
+        "avg_score": sum(scores) / len(scores) if scores else None,
+    }
 
 
 # --- example tasks ---------------------------------------------------------

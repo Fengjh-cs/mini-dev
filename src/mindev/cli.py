@@ -113,19 +113,27 @@ def _cmd_eval(args: argparse.Namespace) -> int:
 
     import tempfile
 
-    from .eval import default_tasks, run_eval
+    from .eval import LLMJudge, default_tasks, run_eval, summarize
     from .llm.openai import OpenAIProvider
 
+    judge = LLMJudge(lambda: OpenAIProvider(model=args.model)) if args.judge else None
     with tempfile.TemporaryDirectory() as root:
         results = run_eval(
-            lambda: OpenAIProvider(model=args.model), default_tasks(), root
+            lambda: OpenAIProvider(model=args.model),
+            default_tasks(),
+            root,
+            judge=judge,
         )
 
-    passed = sum(1 for r in results if r.passed)
+    s = summarize(results)
     for r in results:
-        print(f"  [{'PASS' if r.passed else 'FAIL'}] {r.name}")
-    print(f"\n{passed}/{len(results)} passed")
-    return 0 if passed == len(results) else 1
+        score = f"  score={r.score:.1f}" if r.score is not None else ""
+        print(f"  [{'PASS' if r.passed else 'FAIL'}] {r.name}{score}")
+    line = f"\n{s['passed']}/{s['total']} passed"
+    if s["avg_score"] is not None:
+        line += f", avg score {s['avg_score']:.2f}"
+    print(line)
+    return 0 if s["passed"] == s["total"] else 1
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -180,6 +188,11 @@ def build_parser() -> argparse.ArgumentParser:
 
     eval_p = sub.add_parser("eval", help="Run the built-in evaluation tasks.")
     eval_p.add_argument("--model", default=None, help="Override the OpenAI model.")
+    eval_p.add_argument(
+        "--judge",
+        action="store_true",
+        help="Score outputs with an LLM judge (needs an API key).",
+    )
     eval_p.set_defaults(func=_cmd_eval)
 
     return parser
