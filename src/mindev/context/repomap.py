@@ -1,12 +1,14 @@
 """Generate a token-budgeted map of a repository (Aider-style RepoMap).
 
-Uses tree-sitter to extract top-level function/class definitions so the agent
-gets a condensed "what's here and where" instead of full file contents.
+Uses tree-sitter to extract top-level function/class/type definitions so the
+agent gets a condensed "what's here and where" instead of full file contents.
 """
 
 import os
 from dataclasses import dataclass
 
+import tree_sitter_go
+import tree_sitter_javascript
 import tree_sitter_python
 from tree_sitter import Language, Parser
 
@@ -16,18 +18,41 @@ IGNORED_DIRS = {
     "htmlcov", ".eggs",
 }
 
-_PY_LANGUAGE = Language(tree_sitter_python.language())
+# extension -> (language, {node_type -> symbol kind})
+_LANGUAGES = {
+    ".py": (
+        Language(tree_sitter_python.language()),
+        {"function_definition": "function", "class_definition": "class"},
+    ),
+    ".js": (
+        Language(tree_sitter_javascript.language()),
+        {"function_declaration": "function", "class_declaration": "class"},
+    ),
+    ".go": (
+        Language(tree_sitter_go.language()),
+        {
+            "function_declaration": "function",
+            "method_declaration": "function",
+            "type_spec": "type",
+        },
+    ),
+}
+
+_parsers: dict[str, Parser] = {}
+
+
+def _parser_for(ext: str) -> Parser:
+    if ext not in _parsers:
+        language, _ = _LANGUAGES[ext]
+        _parsers[ext] = Parser(language)
+    return _parsers[ext]
 
 
 @dataclass
 class Symbol:
-    kind: str  # "function" | "class"
+    kind: str  # "function" | "class" | "type"
     name: str
     line: int
-
-
-def _parser() -> Parser:
-    return Parser(_PY_LANGUAGE)
 
 
 def estimate_tokens(text: str) -> int:
@@ -42,27 +67,31 @@ def list_source_files(root: str) -> list[str]:
             d for d in dirnames if d not in IGNORED_DIRS and not d.startswith(".")
         )
         for fn in sorted(filenames):
-            if fn.endswith(".py"):
+            if os.path.splitext(fn)[1] in _LANGUAGES:
                 files.append(os.path.relpath(os.path.join(dirpath, fn), root))
     return files
 
 
 def extract_symbols(path: str) -> list[Symbol]:
+    ext = os.path.splitext(path)[1]
+    if ext not in _LANGUAGES:
+        return []
     try:
         with open(path, encoding="utf-8", errors="replace") as f:
             code = f.read()
     except OSError:
         return []
     data = code.encode("utf-8")
-    tree = _parser().parse(data)
+    tree = _parser_for(ext).parse(data)
+    _, def_types = _LANGUAGES[ext]
     symbols: list[Symbol] = []
 
     def walk(node) -> None:
-        if node.type in ("function_definition", "class_definition"):
+        kind = def_types.get(node.type)
+        if kind is not None:
             name_node = node.child_by_field_name("name")
             if name_node is not None:
                 name = data[name_node.start_byte:name_node.end_byte].decode("utf-8")
-                kind = "class" if node.type == "class_definition" else "function"
                 symbols.append(
                     Symbol(kind=kind, name=name, line=node.start_point.row + 1)
                 )
