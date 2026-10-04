@@ -86,4 +86,4 @@ flowchart TD
     Loop --> Trace[Trace recorder]
 ```
 
-详见 [DESIGN.md](DESIGN.md)。
+详见 [DESIGN.md](DESIGN.md)。有额度后照着 [VALIDATION.md](VALIDATION.md) 跑真实验证，拿量化数据。
