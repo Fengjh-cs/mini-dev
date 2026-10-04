@@ -2,6 +2,8 @@
 
 from abc import ABC, abstractmethod
 
+import jsonschema
+
 
 class Tool(ABC):
     name: str = ""
@@ -23,3 +25,13 @@ class Tool(ABC):
             "description": self.description,
             "parameters": self.parameters(),
         }
+
+    def validate(self, arguments: dict) -> str | None:
+        """Return an error message if arguments don't match the schema, else None."""
+        if not isinstance(arguments, dict):
+            return "arguments must be a JSON object"
+        try:
+            jsonschema.validate(instance=arguments, schema=self.parameters())
+        except jsonschema.ValidationError as exc:
+            return f"invalid arguments: {exc.message}"
+        return None

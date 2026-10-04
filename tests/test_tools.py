@@ -36,6 +36,6 @@ def test_registry_catches_tool_exception():
             raise RuntimeError("kaboom")
 
     reg = ToolRegistry([Boom()])
-    out = reg.run("boom", {})
+    out = reg.run("boom", {"path": "x"})
     assert out.startswith("Error")
     assert "kaboom" in out

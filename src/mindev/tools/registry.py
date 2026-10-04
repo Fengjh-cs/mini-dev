@@ -18,6 +18,9 @@ class ToolRegistry:
         tool = self._tools.get(name)
         if tool is None:
             return f"Error: unknown tool '{name}'."
+        error = tool.validate(arguments)
+        if error is not None:
+            return f"Error: {error} (tool '{name}')."
         try:
             return tool.run(arguments)
         except Exception as exc:  # a tool must never crash the loop

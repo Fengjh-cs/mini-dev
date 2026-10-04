@@ -8,7 +8,7 @@ version = "0.1.0"
 description = "A minimal CLI coding agent — resume project."
 readme = "README.md"
 requires-python = ">=3.11"
-dependencies = ["openai>=1.66", "python-dotenv>=1.0", "tree-sitter>=0.21", "tree-sitter-python>=0.21"]
+dependencies = ["openai>=1.66", "python-dotenv>=1.0", "tree-sitter>=0.21", "tree-sitter-python>=0.21", "jsonschema>=4.0"]
 
 [project.optional-dependencies]
 dev = ["pytest>=8"]
