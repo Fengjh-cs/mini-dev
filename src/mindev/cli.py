@@ -34,6 +34,7 @@ def _cmd_run(args: argparse.Namespace) -> int:
 
     from .agent.loop import AgentLoop
     from .agent.permissions import Mode, PermissionPolicy
+    from .agent.subagent import EXPLORE_INSTRUCTIONS, ExploreSubagent
     from .context.prompter import build_system_prompt
     from .context.repomap import RepoMap
     from .llm.openai import OpenAIProvider
@@ -41,6 +42,7 @@ def _cmd_run(args: argparse.Namespace) -> int:
     from .sandbox.local import LocalSandbox
     from .tools.bash import BashTool
     from .tools.edit import EditFileTool, WriteFileTool
+    from .tools.explore import ExploreTool
     from .tools.read import ReadTool
     from .tools.registry import ToolRegistry
     from .tools.snapshot import SnapshotStore
@@ -71,6 +73,12 @@ def _cmd_run(args: argparse.Namespace) -> int:
             WriteFileTool(snapshots),
             EditFileTool(snapshots),
             BashTool(sandbox),
+            ExploreTool(
+                ExploreSubagent(
+                    lambda: OpenAIProvider(model=args.model, system=EXPLORE_INSTRUCTIONS),
+                    ToolRegistry([ReadTool()]),
+                )
+            ),
         ]
 
     mcp_clients = []
