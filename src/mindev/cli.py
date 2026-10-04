@@ -2,6 +2,7 @@
 
 import argparse
 import os
+import shlex
 import sys
 
 
@@ -59,6 +60,19 @@ def _cmd_run(args: argparse.Namespace) -> int:
             EditFileTool(snapshots),
             BashTool(sandbox),
         ]
+
+    mcp_clients = []
+    if args.mcp:
+        from .tools.mcp import McpClient, McpTool
+
+        for spec in args.mcp:
+            parts = shlex.split(spec)
+            if not parts:
+                continue
+            client = McpClient(command=parts[0], args=parts[1:])
+            mcp_clients.append(client)
+            registry_tools += [McpTool(client, d) for d in client.list_tools()]
+
     tools = ToolRegistry(registry_tools)
 
     approver = None if args.yes else _interactive_approve
@@ -67,7 +81,11 @@ def _cmd_run(args: argparse.Namespace) -> int:
 
     task = " ".join(args.task)
     print(f"Task: {task}\n[mode: {mode.value}]\n", flush=True)
-    result = loop.run(task)
+    try:
+        result = loop.run(task)
+    finally:
+        for client in mcp_clients:
+            client.close()
     print("\n" + "=" * 40)
     print(result)
     return 0
@@ -105,6 +123,14 @@ def build_parser() -> argparse.ArgumentParser:
         "--yes",
         action="store_true",
         help="Auto-approve all risky tool calls (skip confirmation).",
+    )
+    run_p.add_argument(
+        "--mcp",
+        action="append",
+        default=[],
+        metavar="COMMAND",
+        help="Connect to an MCP stdio server (repeatable). E.g. 'npx -y "
+        "@modelcontextprotocol/server-filesystem .'",
     )
     run_p.set_defaults(func=_cmd_run)
 
