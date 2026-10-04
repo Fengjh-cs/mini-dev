@@ -47,8 +47,13 @@ def _cmd_run(args: argparse.Namespace) -> int:
 
     mode = Mode.READONLY if args.plan else Mode.READWRITE
     repo_map = "" if args.no_repomap else RepoMap().build(os.getcwd())
+    on_token = None
+    if args.stream:
+        on_token = lambda token: print(token, end="", flush=True)
     provider = OpenAIProvider(
-        model=args.model, system=build_system_prompt(repo_map, plan=args.plan)
+        model=args.model,
+        system=build_system_prompt(repo_map, plan=args.plan),
+        on_token=on_token,
     )
 
     session_store = None
@@ -189,6 +194,11 @@ def build_parser() -> argparse.ArgumentParser:
         "--yes",
         action="store_true",
         help="Auto-approve all risky tool calls (skip confirmation).",
+    )
+    run_p.add_argument(
+        "--stream",
+        action="store_true",
+        help="Stream the model's tokens as they are generated.",
     )
     run_p.add_argument(
         "--compact-threshold",

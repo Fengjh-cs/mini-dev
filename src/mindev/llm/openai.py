@@ -7,6 +7,7 @@ setting ``OPENAI_BASE_URL`` (or passing ``base_url=``).
 
 import json
 import os
+from collections.abc import Callable
 
 from openai import OpenAI
 
@@ -27,12 +28,14 @@ class OpenAIProvider(LLMProvider):
         api_key: str | None = None,
         base_url: str | None = None,
         system: str | None = None,
+        on_token: Callable[[str], None] | None = None,
     ) -> None:
         self.model = model or os.getenv("MINIDEV_MODEL", DEFAULT_MODEL)
         self._client = OpenAI(
             api_key=api_key or os.getenv("OPENAI_API_KEY"),
             base_url=base_url or os.getenv("OPENAI_BASE_URL") or None,
         )
+        self._on_token = on_token
         system = system if system is not None else DEFAULT_SYSTEM
         self._messages: list[dict] = []
         if system:
@@ -42,6 +45,11 @@ class OpenAIProvider(LLMProvider):
         self._messages.append({"role": "user", "content": content})
 
     def send(self, tools: list[dict]) -> Turn:
+        if self._on_token is None:
+            return self._send_once(tools)
+        return self._send_stream(tools)
+
+    def _send_once(self, tools: list[dict]) -> Turn:
         kwargs: dict = {"model": self.model, "messages": self._messages}
         if tools:
             kwargs["tools"] = tools
@@ -73,6 +81,60 @@ class OpenAIProvider(LLMProvider):
                 ToolCall(id=tc.id, name=tc.function.name, arguments=arguments)
             )
         return Turn(text=message.content or "", tool_calls=tool_calls)
+
+    def _send_stream(self, tools: list[dict]) -> Turn:
+        kwargs: dict = {"model": self.model, "messages": self._messages, "stream": True}
+        if tools:
+            kwargs["tools"] = tools
+        stream = self._client.chat.completions.create(**kwargs)
+
+        content_parts: list[str] = []
+        pending: dict[int, dict] = {}
+        for chunk in stream:
+            if not chunk.choices:
+                continue
+            delta = chunk.choices[0].delta
+            if getattr(delta, "content", None):
+                content_parts.append(delta.content)
+                self._on_token(delta.content)
+            for tc in getattr(delta, "tool_calls", None) or []:
+                entry = pending.setdefault(
+                    tc.index, {"id": "", "name": "", "arguments": ""}
+                )
+                if tc.id:
+                    entry["id"] = tc.id
+                if tc.function:
+                    if tc.function.name:
+                        entry["name"] += tc.function.name
+                    if tc.function.arguments:
+                        entry["arguments"] += tc.function.arguments
+
+        text = "".join(content_parts)
+        assistant: dict = {"role": "assistant", "content": text}
+        tool_calls: list[ToolCall] = []
+        if pending:
+            assistant["tool_calls"] = []
+            for idx in sorted(pending):
+                entry = pending[idx]
+                assistant["tool_calls"].append(
+                    {
+                        "id": entry["id"],
+                        "type": "function",
+                        "function": {
+                            "name": entry["name"],
+                            "arguments": entry["arguments"],
+                        },
+                    }
+                )
+                try:
+                    arguments = json.loads(entry["arguments"] or "{}")
+                except json.JSONDecodeError:
+                    arguments = {"_raw": entry["arguments"]}
+                tool_calls.append(
+                    ToolCall(id=entry["id"], name=entry["name"], arguments=arguments)
+                )
+        self._messages.append(assistant)
+        return Turn(text=text, tool_calls=tool_calls)
 
     def add_tool_result(self, call_id: str, output: str) -> None:
         self._messages.append(
