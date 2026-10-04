@@ -25,6 +25,8 @@ def _cmd_run(args: argparse.Namespace) -> int:
 
     from .agent.loop import AgentLoop
     from .llm.openai import OpenAIProvider
+    from .sandbox.docker import DockerSandbox
+    from .sandbox.local import LocalSandbox
     from .tools.bash import BashTool
     from .tools.edit import EditFileTool, WriteFileTool
     from .tools.read import ReadTool
@@ -33,12 +35,13 @@ def _cmd_run(args: argparse.Namespace) -> int:
 
     provider = OpenAIProvider(model=args.model)
     snapshots = SnapshotStore()
+    sandbox = DockerSandbox() if args.sandbox == "docker" else LocalSandbox()
     tools = ToolRegistry(
         [
             ReadTool(),
             WriteFileTool(snapshots),
             EditFileTool(snapshots),
-            BashTool(),
+            BashTool(sandbox),
         ]
     )
     loop = AgentLoop(provider, tools, observer=_print_tool_call)
@@ -63,6 +66,12 @@ def build_parser() -> argparse.ArgumentParser:
     run_p = sub.add_parser("run", help="Run a coding task.")
     run_p.add_argument("task", nargs="+", help="The task to perform.")
     run_p.add_argument("--model", default=None, help="Override the OpenAI model.")
+    run_p.add_argument(
+        "--sandbox",
+        choices=["local", "docker"],
+        default="local",
+        help="Where to run bash commands (default: local).",
+    )
     run_p.set_defaults(func=_cmd_run)
 
     return parser
