@@ -16,7 +16,9 @@ OPENAI_BASE_URL=https://api.deepseek.com
 MINIDEV_MODEL=deepseek-chat
 ```
 
-> 用 `deepseek-chat`（V3，支持 function calling）。`deepseek-reasoner`（R1）不支持工具调用，我们的 agent 会调工具，用它必失败。不确定以 DeepSeek 官方文档为准。
+> **模型选择原则**：选「chat / 通用类（支持 function calling）」的模型，**不要**选「reasoner / 推理类」——后者（R1、V3.2-Speciale 等）在思考模式下不支持工具调用，mini-dev 靠工具调用工作，用它必失败。
+>
+> **模型 ID 以 [DeepSeek 官方文档](https://api-docs.deepseek.com) 为准**：ID 可能更新（`deepseek-chat` 在新版可能换成 `deepseek-v4-flash` 等），填之前先确认当前可用的 chat 模型名。
 
 ## 1. 冒烟测试（确认链路通）
 
