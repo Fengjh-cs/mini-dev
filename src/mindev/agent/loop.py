@@ -39,16 +39,17 @@ class AgentLoop:
     def run(self, task: str) -> str:
         self._provider.add_user(task)
         for _ in range(self._max_iterations):
-            if (
-                self._compact_threshold is not None
-                and self._provider.context_tokens() > self._compact_threshold
-            ):
-                self._provider.compact(self._compact_keep)
-                self._record(
-                    TraceEvent(
-                        "compact", "compact", 0, self._provider.context_tokens()
+            if self._compact_threshold is not None:
+                tokens_before = self._provider.context_tokens()
+                if tokens_before > self._compact_threshold:
+                    self._provider.compact(self._compact_keep)
+                    self._record(
+                        TraceEvent(
+                            "compact", "compact", 0,
+                            self._provider.context_tokens(),
+                            tokens_before=tokens_before,
+                        )
                     )
-                )
             turn = self._provider.send(self._tools.schemas())
             if not turn.tool_calls:
                 return turn.text.strip() or "(no response)"

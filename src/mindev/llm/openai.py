@@ -155,7 +155,13 @@ class OpenAIProvider(LLMProvider):
         rest = [m for m in self._messages if m.get("role") != "system"]
         if len(rest) <= keep_messages:
             return ""
-        old, recent = rest[:-keep_messages], rest[-keep_messages:]
+        cut = len(rest) - keep_messages
+        # A Chat Completions tool message must follow the assistant message
+        # that requested it. Summarize the entire batch if the cut falls
+        # inside its tool results.
+        while cut < len(rest) and rest[cut].get("role") == "tool":
+            cut += 1
+        old, recent = rest[:cut], rest[cut:]
         summary = self._summarize(old)
         self._messages = system + [
             {"role": "user", "content": "[Earlier conversation summary]\n" + summary}

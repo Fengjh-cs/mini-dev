@@ -100,3 +100,39 @@ def test_openai_compact_noop_when_short():
     ]
     assert provider.compact(keep_messages=6) == ""
     assert len(provider._messages) == 2
+
+
+def test_openai_compact_keeps_tool_call_batch_together(monkeypatch):
+    def create(**kwargs):
+        return SimpleNamespace(
+            choices=[SimpleNamespace(message=SimpleNamespace(content="TOOL SUMMARY"))]
+        )
+
+    fake_client = SimpleNamespace(
+        chat=SimpleNamespace(completions=SimpleNamespace(create=create))
+    )
+    monkeypatch.setattr(oai, "OpenAI", lambda **kw: fake_client)
+
+    provider = OpenAIProvider(api_key="sk-test")
+    provider._messages = [
+        {"role": "system", "content": "sys"},
+        {"role": "user", "content": "read six files"},
+        {
+            "role": "assistant",
+            "content": "",
+            "tool_calls": [
+                {"id": str(i), "type": "function", "function": {"name": "read_file", "arguments": "{}"}}
+                for i in range(6)
+            ],
+        },
+        *[
+            {"role": "tool", "tool_call_id": str(i), "content": f"result {i}"}
+            for i in range(6)
+        ],
+    ]
+
+    assert provider.compact(keep_messages=6) == "TOOL SUMMARY"
+    assert provider._messages == [
+        {"role": "system", "content": "sys"},
+        {"role": "user", "content": "[Earlier conversation summary]\nTOOL SUMMARY"},
+    ]

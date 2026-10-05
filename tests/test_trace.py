@@ -73,4 +73,6 @@ def test_recorder_records_compact():
     AgentLoop(
         FakeProvider(), ToolRegistry([ReadTool()]), recorder=rec, compact_threshold=500
     ).run("task")
-    assert "compact" in [e.kind for e in rec.events]
+    compact = next(e for e in rec.events if e.kind == "compact")
+    assert compact.tokens_before == 1100
+    assert compact.tokens == 50

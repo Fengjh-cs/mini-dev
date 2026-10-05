@@ -12,6 +12,7 @@ class TraceEvent:
     tokens: int
     args: dict | None = None
     result: str = ""
+    tokens_before: int | None = None
 
 
 class TraceRecorder:
