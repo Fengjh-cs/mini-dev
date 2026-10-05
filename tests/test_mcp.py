@@ -57,7 +57,7 @@ def test_mcp_tool_adapter():
         tool_def = client.list_tools()[0]
         tool = McpTool(client, tool_def)
         assert tool.name == "echo"
-        assert tool.schema()["parameters"] == tool_def["inputSchema"]
+        assert tool.schema()["function"]["parameters"] == tool_def["inputSchema"]
         assert tool.risk == "command"
         assert "echo:hello" in tool.run({"text": "hello"})
     finally:

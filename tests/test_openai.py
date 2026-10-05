@@ -48,7 +48,7 @@ def test_send_parses_tool_call(monkeypatch):
     monkeypatch.setattr(oai, "OpenAI", lambda **kw: client)
 
     provider = OpenAIProvider(api_key="sk-test")
-    turn = provider.send([{"type": "function", "name": "read_file"}])
+    turn = provider.send([{"type": "function", "function": {"name": "read_file"}}])
 
     assert turn.text == ""
     assert len(turn.tool_calls) == 1

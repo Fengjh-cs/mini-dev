@@ -21,9 +21,11 @@ class Tool(ABC):
     def schema(self) -> dict:
         return {
             "type": "function",
-            "name": self.name,
-            "description": self.description,
-            "parameters": self.parameters(),
+            "function": {
+                "name": self.name,
+                "description": self.description,
+                "parameters": self.parameters(),
+            },
         }
 
     def validate(self, arguments: dict) -> str | None:

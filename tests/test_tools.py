@@ -23,8 +23,11 @@ def test_bash_tool_runs_echo():
 
 def test_registry_schemas_and_run():
     reg = ToolRegistry([ReadTool(), BashTool()])
-    names = [s["name"] for s in reg.schemas()]
+    schemas = reg.schemas()
+    names = [s["function"]["name"] for s in schemas]
     assert names == ["read_file", "bash"]
+    assert all(s["type"] == "function" for s in schemas)
+    assert schemas[0]["function"]["parameters"]["required"] == ["path"]
     assert "unknown tool" in reg.run("nope", {})
 
 
