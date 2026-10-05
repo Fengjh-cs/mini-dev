@@ -25,4 +25,5 @@ htmlcov/
 
 # Sandbox / temp
 .sandbox/
+.pytest-workspace-tmp/
 *.log
