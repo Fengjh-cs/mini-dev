@@ -23,3 +23,12 @@ def test_list_source_files_includes_multiple_languages(tmp_path):
     (tmp_path / "c.go").write_text("")
     (tmp_path / "d.txt").write_text("")
     assert set(list_source_files(str(tmp_path))) == {"a.py", "b.js", "c.go"}
+
+
+def test_extract_symbols_python_nested_quote_fstring(tmp_path):
+    # PEP 701 nested quotes inside an f-string used to crash tree-sitter.
+    # Python extraction now uses `ast`, which must handle this without issue.
+    p = tmp_path / "nested.py"
+    p.write_text("def f():\n    return f\"value: {d['key']}\"\n")
+    syms = extract_symbols(str(p))
+    assert any(s.name == "f" for s in syms)

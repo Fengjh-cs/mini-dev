@@ -1,15 +1,18 @@
 """Generate a token-budgeted map of a repository (Aider-style RepoMap).
 
-Uses tree-sitter to extract top-level function/class/type definitions so the
-agent gets a condensed "what's here and where" instead of full file contents.
+Extracts top-level function/class/type definitions so the agent gets a
+condensed "what's here and where" instead of full file contents.
+
+Python uses the stdlib ``ast`` module (robust, no native crash risk); JS/Go
+use tree-sitter.
 """
 
+import ast
 import os
 from dataclasses import dataclass
 
 import tree_sitter_go
 import tree_sitter_javascript
-import tree_sitter_python
 from tree_sitter import Language, Parser
 
 IGNORED_DIRS = {
@@ -18,12 +21,8 @@ IGNORED_DIRS = {
     "htmlcov", ".eggs",
 }
 
-# extension -> (language, {node_type -> symbol kind})
+# extension -> (language, {node_type -> symbol kind}) for non-Python languages
 _LANGUAGES = {
-    ".py": (
-        Language(tree_sitter_python.language()),
-        {"function_definition": "function", "class_definition": "class"},
-    ),
     ".js": (
         Language(tree_sitter_javascript.language()),
         {"function_declaration": "function", "class_declaration": "class"},
@@ -37,6 +36,8 @@ _LANGUAGES = {
         },
     ),
 }
+
+SOURCE_EXTENSIONS = {".py", ".js", ".go"}
 
 _parsers: dict[str, Parser] = {}
 
@@ -67,21 +68,40 @@ def list_source_files(root: str) -> list[str]:
             d for d in dirnames if d not in IGNORED_DIRS and not d.startswith(".")
         )
         for fn in sorted(filenames):
-            if os.path.splitext(fn)[1] in _LANGUAGES:
+            if os.path.splitext(fn)[1] in SOURCE_EXTENSIONS:
                 files.append(os.path.relpath(os.path.join(dirpath, fn), root))
     return files
 
 
 def extract_symbols(path: str) -> list[Symbol]:
     ext = os.path.splitext(path)[1]
-    if ext not in _LANGUAGES:
+    if ext not in SOURCE_EXTENSIONS:
         return []
     try:
         with open(path, encoding="utf-8", errors="replace") as f:
             code = f.read()
     except OSError:
         return []
-    data = code.encode("utf-8")
+    if ext == ".py":
+        return _extract_python(code)
+    return _extract_tree_sitter(ext, code.encode("utf-8"))
+
+
+def _extract_python(code: str) -> list[Symbol]:
+    try:
+        tree = ast.parse(code)
+    except (SyntaxError, ValueError):
+        return []
+    symbols: list[Symbol] = []
+    for node in tree.body:
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            symbols.append(Symbol(kind="function", name=node.name, line=node.lineno))
+        elif isinstance(node, ast.ClassDef):
+            symbols.append(Symbol(kind="class", name=node.name, line=node.lineno))
+    return symbols
+
+
+def _extract_tree_sitter(ext: str, data: bytes) -> list[Symbol]:
     tree = _parser_for(ext).parse(data)
     _, def_types = _LANGUAGES[ext]
     symbols: list[Symbol] = []
@@ -95,7 +115,7 @@ def extract_symbols(path: str) -> list[Symbol]:
                 symbols.append(
                     Symbol(kind=kind, name=name, line=node.start_point.row + 1)
                 )
-            return  # top-level only: don't descend into the definition body
+            return
         for child in node.children:
             walk(child)
 
