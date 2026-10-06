@@ -2,6 +2,8 @@ from types import SimpleNamespace
 
 import mindev.llm.openai as oai
 from mindev.llm.openai import OpenAIProvider
+from mindev.tools.read import ReadTool
+from mindev.tools.registry import ToolRegistry
 
 
 def _fake_client(response):
@@ -79,3 +81,58 @@ def test_add_tool_result_appends_tool_message():
         "tool_call_id": "call_1",
         "content": "hello from tool",
     }
+
+
+def test_function_call_protocol_roundtrip_nonstream(monkeypatch):
+    """The next request must replay the assistant call and both matching results."""
+    tools = ToolRegistry([ReadTool()]).schemas()
+    first = [
+        SimpleNamespace(id="call_a", function=SimpleNamespace(
+            name="read_file", arguments='{"path":"a.txt"}')),
+        SimpleNamespace(id="call_b", function=SimpleNamespace(
+            name="read_file", arguments='{"path":"b.txt"}')),
+    ]
+    expected_calls = [
+        {"id": "call_a", "type": "function", "function": {
+            "name": "read_file", "arguments": '{"path":"a.txt"}'}},
+        {"id": "call_b", "type": "function", "function": {
+            "name": "read_file", "arguments": '{"path":"b.txt"}'}},
+    ]
+    request_count = 0
+
+    def create(**kwargs):
+        nonlocal request_count
+        request_count += 1
+        assert kwargs["tools"] == tools
+        assert len(kwargs["tools"]) == 1
+        assert set(kwargs["tools"][0]) == {"type", "function"}
+        assert kwargs["tools"][0]["type"] == "function"
+        assert set(kwargs["tools"][0]["function"]) == {
+            "name", "description", "parameters"}
+        if request_count == 1:
+            assert kwargs["messages"] == [
+                {"role": "system", "content": "system"},
+                {"role": "user", "content": "read two files"},
+            ]
+            return _response(_message(tool_calls=first))
+        assert kwargs["messages"][-3:] == [
+            {"role": "assistant", "content": "", "tool_calls": expected_calls},
+            {"role": "tool", "tool_call_id": "call_a", "content": "alpha"},
+            {"role": "tool", "tool_call_id": "call_b", "content": "beta"},
+        ]
+        return _response(_message(content="done"))
+
+    fake_client = SimpleNamespace(chat=SimpleNamespace(
+        completions=SimpleNamespace(create=create)))
+    monkeypatch.setattr(oai, "OpenAI", lambda **kw: fake_client)
+    provider = OpenAIProvider(api_key="sk-test", system="system")
+    provider.add_user("read two files")
+    turn = provider.send(tools)
+    assert [(call.id, call.name, call.arguments) for call in turn.tool_calls] == [
+        ("call_a", "read_file", {"path": "a.txt"}),
+        ("call_b", "read_file", {"path": "b.txt"}),
+    ]
+    provider.add_tool_result("call_a", "alpha")
+    provider.add_tool_result("call_b", "beta")
+    assert provider.send(tools).text == "done"
+    assert request_count == 2

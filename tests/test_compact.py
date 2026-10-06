@@ -1,6 +1,7 @@
 from types import SimpleNamespace
 
 import mindev.llm.openai as oai
+import pytest
 from mindev.agent.loop import AgentLoop
 from mindev.llm.base import LLMProvider, ToolCall, Turn
 from mindev.llm.openai import OpenAIProvider
@@ -136,3 +137,68 @@ def test_openai_compact_keeps_tool_call_batch_together(monkeypatch):
         {"role": "system", "content": "sys"},
         {"role": "user", "content": "[Earlier conversation summary]\nTOOL SUMMARY"},
     ]
+
+
+def _assert_complete_tool_pairs(messages):
+    """Match the Chat Completions rule: each call has one adjacent tool result."""
+    pending = set()
+    for message in messages:
+        if message["role"] == "tool":
+            assert message["tool_call_id"] in pending
+            pending.remove(message["tool_call_id"])
+        else:
+            assert not pending, "assistant tool batch was split before all results"
+            if message["role"] == "assistant" and message.get("tool_calls"):
+                ids = [call["id"] for call in message["tool_calls"]]
+                assert len(ids) == len(set(ids))
+                pending = set(ids)
+    assert not pending, "assistant tool batch is missing a result"
+
+
+@pytest.mark.parametrize("keep_messages", [2, 3, 4, 5, 7, 8, 9])
+def test_compact_never_splits_multi_tool_batches_at_cut_boundary(monkeypatch, keep_messages):
+    """Every possible cut through either batch must leave a valid next request."""
+    normal_requests = []
+    request_count = 0
+
+    def create(**kwargs):
+        nonlocal request_count
+        request_count += 1
+        messages = kwargs["messages"]
+        if request_count == 1:
+            return SimpleNamespace(choices=[SimpleNamespace(
+                message=SimpleNamespace(content="SUMMARY"))])
+        _assert_complete_tool_pairs(messages)
+        normal_requests.append(messages)
+        return SimpleNamespace(choices=[SimpleNamespace(
+            message=SimpleNamespace(content="done", tool_calls=None))])
+
+    fake_client = SimpleNamespace(chat=SimpleNamespace(
+        completions=SimpleNamespace(create=create)))
+    monkeypatch.setattr(oai, "OpenAI", lambda **kw: fake_client)
+
+    def assistant(*ids):
+        return {"role": "assistant", "content": "", "tool_calls": [
+            {"id": call_id, "type": "function", "function": {
+                "name": "read_file", "arguments": "{}"}}
+            for call_id in ids
+        ]}
+
+    def tool(call_id):
+        return {"role": "tool", "tool_call_id": call_id, "content": call_id}
+
+    provider = OpenAIProvider(api_key="sk-test", system="sys")
+    provider._messages = [
+        {"role": "system", "content": "sys"},
+        {"role": "user", "content": "first"},
+        assistant("a", "b"), tool("a"), tool("b"),
+        {"role": "user", "content": "second"},
+        assistant("c", "d", "e"), tool("c"), tool("d"), tool("e"),
+        {"role": "user", "content": "latest"},
+    ]
+
+    assert provider.compact(keep_messages=keep_messages) == "SUMMARY"
+    _assert_complete_tool_pairs(provider._messages)
+    assert provider.send([]).text == "done"
+    assert len(normal_requests) == 1
+    assert request_count == 2
