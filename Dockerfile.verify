@@ -1,0 +1,10 @@
+FROM python:3.13-slim
+
+WORKDIR /opt/mindev
+COPY pyproject.toml README.md ./
+COPY src/ ./src/
+RUN python -m pip install --no-cache-dir -e ".[dev]"
+
+# Tests must import the agent's current isolated worktree, not the image copy.
+ENV PYTHONPATH=/workspace/src
+WORKDIR /workspace

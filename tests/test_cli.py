@@ -62,17 +62,26 @@ def test_run_without_command_tool(monkeypatch, capsys, tmp_path):
 
 def test_cli_rejects_local_bash_and_host_mcp(monkeypatch, capsys, tmp_path):
     import dotenv
+    import mindev.cli
 
     monkeypatch.setattr(dotenv, "load_dotenv", lambda *a, **k: None)
     monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
     monkeypatch.chdir(tmp_path)
 
     assert main(["run", "--sandbox", "local", "task"]) == 2
-    assert "bash requires --sandbox docker" in capsys.readouterr().err
+    assert "bash and --verify require --sandbox docker" in capsys.readouterr().err
+    assert main(["run", "--sandbox", "local", "--no-bash", "--verify",
+                 "python -m pytest -q", "task"]) == 2
+    assert "bash and --verify require --sandbox docker" in capsys.readouterr().err
     assert main(["run", "--no-bash", "--mcp", "server", "task"]) == 2
     assert "host MCP servers" in capsys.readouterr().err
     assert main(["run", "--no-bash", "--checkpoint", "task"]) == 2
     assert "--checkpoint is unavailable" in capsys.readouterr().err
+    assert main(["run", "--plan", "--verify", "python -m pytest -q", "task"]) == 2
+    assert "read-only plan mode" in capsys.readouterr().err
+    monkeypatch.setattr(mindev.cli.shutil, "which", lambda name: None)
+    assert main(["run", "--no-bash", "--verify", "python -m pytest -q", "task"]) == 2
+    assert "Docker is required" in capsys.readouterr().err
 
 
 def test_cli_mounts_the_copy_for_docker_bash(monkeypatch, tmp_path):
@@ -108,3 +117,42 @@ def test_cli_mounts_the_copy_for_docker_bash(monkeypatch, tmp_path):
     assert mount == f"type=bind,source={workspace},target=/workspace"
     assert seen["read_root"] == workspace
     assert seen["write_root"] == workspace
+
+
+def test_cli_verifier_uses_same_copy_without_exposing_bash(monkeypatch, tmp_path):
+    import dotenv
+    import mindev.agent.loop
+    import mindev.cli
+    import mindev.llm.openai
+
+    monkeypatch.setattr(dotenv, "load_dotenv", lambda *a, **k: None)
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(mindev.cli.shutil, "which", lambda name: "docker")
+    workspace = tmp_path.parent / f"{tmp_path.name}-verify"
+    seen = {}
+
+    class FakeProvider:
+        def __init__(self, **kwargs):
+            pass
+
+    class FakeLoop:
+        def __init__(self, provider, tools, **kwargs):
+            seen["tools"] = [schema["function"]["name"] for schema in tools.schemas()]
+            seen["verifier"] = kwargs["verifier"]
+            seen["read_root"] = tools._tools["read_file"]._access.root
+
+        def run(self, task):
+            return "done"
+
+    monkeypatch.setattr(mindev.llm.openai, "OpenAIProvider", FakeProvider)
+    monkeypatch.setattr(mindev.agent.loop, "AgentLoop", FakeLoop)
+    assert main(["run", "--no-bash", "--yes", "--no-repomap",
+                 "--output-dir", str(workspace),
+                 "--verify", "python -m pytest tests/test_tools.py -q", "task"]) == 0
+    assert "bash" not in seen["tools"]
+    assert seen["read_root"] == workspace
+    assert seen["verifier"].commands == ("python -m pytest tests/test_tools.py -q",)
+    command = seen["verifier"]._sandbox.build_command("python -m pytest tests/test_tools.py -q")
+    assert f"type=bind,source={workspace},target=/workspace" in command
+    assert "mindev-verify:local" in command

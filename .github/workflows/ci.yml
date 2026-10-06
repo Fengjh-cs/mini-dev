@@ -28,3 +28,7 @@ jobs:
       - run: pytest tests/test_sandbox.py::test_docker_command_writes_only_to_isolated_copy -q
         env:
           MINIDEV_REQUIRE_DOCKER: "1"
+      - run: docker build -f Dockerfile.verify -t mindev-verify:local .
+      - run: pytest tests/test_verify.py::test_real_docker_verifier_uses_isolated_copy -q
+        env:
+          MINIDEV_REQUIRE_DOCKER: "1"

@@ -40,19 +40,27 @@ def _cmd_run(args: argparse.Namespace) -> int:
     if args.mcp:
         print("Error: host MCP servers are unavailable in isolated runs.", file=sys.stderr)
         return 2
-    if not args.plan and not args.no_bash:
+    if args.plan and args.verify:
+        print("Error: --verify is unavailable in read-only plan mode.", file=sys.stderr)
+        return 2
+    if any(not command.strip() for command in args.verify):
+        print("Error: --verify command must not be empty.", file=sys.stderr)
+        return 2
+    needs_docker = not args.plan and (not args.no_bash or bool(args.verify))
+    if needs_docker:
         if args.sandbox != "docker":
-            print("Error: bash requires --sandbox docker; use --no-bash without Docker.",
+            print("Error: bash and --verify require --sandbox docker.",
                   file=sys.stderr)
             return 2
         if shutil.which("docker") is None:
-            print("Error: Docker is required for bash; install Docker or use --no-bash.",
+            print("Error: Docker is required for bash and --verify; install Docker or omit both.",
                   file=sys.stderr)
             return 2
 
     from .agent.loop import AgentLoop
     from .agent.permissions import Mode, PermissionPolicy
     from .agent.subagent import EXPLORE_INSTRUCTIONS, ExploreSubagent
+    from .agent.verify import EditVerifier
     from .context.prompter import build_system_prompt
     from .context.repomap import RepoMap
     from .llm.openai import OpenAIProvider
@@ -91,9 +99,17 @@ def _cmd_run(args: argparse.Namespace) -> int:
     on_token = None
     if args.stream:
         on_token = lambda token: print(token, end="", flush=True)
+    system_prompt = build_system_prompt(repo_map, plan=args.plan)
+    if args.verify:
+        system_prompt += (
+            "\n\nConfigured tests run automatically after each successful file-edit batch. "
+            "Use write_file or edit_file for edits. Read the test result in the "
+            "edit tool response. If a check fails, fix the code and edit again "
+            "before finishing."
+        )
     provider = OpenAIProvider(
         model=args.model,
-        system=build_system_prompt(repo_map, plan=args.plan),
+        system=system_prompt,
         on_token=on_token,
     )
 
@@ -105,6 +121,11 @@ def _cmd_run(args: argparse.Namespace) -> int:
         session_store.load(provider)
 
     snapshots = SnapshotStore()
+    docker_image = args.docker_image or (
+        "mindev-verify:local" if args.verify else "python:3.13-slim"
+    )
+    sandbox = DockerSandbox(host_dir=str(workspace), image=docker_image) if needs_docker else None
+    verifier = EditVerifier(args.verify, sandbox) if args.verify else None
     registry_tools = [ReadTool(file_access)]
     if not args.plan:
         registry_tools += [
@@ -112,7 +133,7 @@ def _cmd_run(args: argparse.Namespace) -> int:
             EditFileTool(snapshots, file_access),
         ]
         if not args.no_bash:
-            registry_tools.append(BashTool(DockerSandbox(host_dir=str(workspace))))
+            registry_tools.append(BashTool(sandbox))
         registry_tools.append(
             ExploreTool(
                 ExploreSubagent(
@@ -139,6 +160,7 @@ def _cmd_run(args: argparse.Namespace) -> int:
         policy=policy,
         compact_threshold=compact_threshold,
         recorder=recorder,
+        verifier=verifier,
     )
 
     task = " ".join(args.task)
@@ -223,6 +245,14 @@ def build_parser() -> argparse.ArgumentParser:
     run_p.add_argument(
         "--output-dir", metavar="DIR",
         help="Create the isolated workspace at DIR (must not already exist).",
+    )
+    run_p.add_argument(
+        "--docker-image", metavar="IMAGE",
+        help="Local image (default: mindev-verify:local with --verify; python:3.13-slim otherwise).",
+    )
+    run_p.add_argument(
+        "--verify", action="append", default=[], metavar="COMMAND",
+        help="Run COMMAND in Docker after each successful edit batch; repeatable.",
     )
     run_p.add_argument(
         "--no-bash",

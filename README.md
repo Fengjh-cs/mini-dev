@@ -50,6 +50,22 @@ mindev run --no-bash "列出当前目录的文件"
 
 > `read_file`、`write_file`、`edit_file` 只接受工作副本内的路径；拒绝 `.env`、`.env.*`（允许 `.env.example`）、副本外路径和符号链接路径。`--mcp` 与 `--checkpoint` 在隔离运行中会被拒绝。相对的 `--trace`、`--session` 路径写入副本；显式绝对路径按用户指定位置写入。
 
+### 编辑后自动验证
+
+先在本机准备包含项目测试依赖的镜像（构建上下文由 `.dockerignore` 限定，不包含 `.env`）：
+
+```bash
+docker build -f Dockerfile.verify -t mindev-verify:local .
+```
+
+然后指定要运行的测试；`--verify` 可以重复。每批成功的 `write_file` / `edit_file` 调用之后，测试会在挂载同一工作副本的 Docker 容器里运行一次。失败输出附在编辑工具结果中交回 Agent，供下一轮修复；最后仍失败会明确标记为未通过验证。
+
+```bash
+mindev run --no-bash --docker-image mindev-verify:local --verify "python -m pytest tests/test_tools.py -q" "修改 read_file 并通过指定测试"
+```
+
+`--no-bash` 只移除模型可调用的 bash 工具，自动验证仍需要 Docker。镜像需预先构建；运行时容器禁用网络，测试只修改隔离副本。
+
 ## Demo
 
 **无需 API key**（纯本地、确定性）：

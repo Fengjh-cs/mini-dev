@@ -6,7 +6,7 @@ from dataclasses import asdict, dataclass
 
 @dataclass
 class TraceEvent:
-    kind: str  # "tool_call" | "compact"
+    kind: str  # "tool_call" | "compact" | "verify"
     name: str
     duration_ms: int
     tokens: int

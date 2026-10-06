@@ -1,11 +1,18 @@
 """Run commands in Docker with only the isolated workspace bind-mounted."""
 
 import subprocess
+from dataclasses import dataclass
 from pathlib import Path
 
 from .base import Sandbox
 
 MAX_OUTPUT_CHARS = 20_000
+
+
+@dataclass(frozen=True)
+class CommandResult:
+    exit_code: int | None
+    output: str
 
 
 class DockerSandbox(Sandbox):
@@ -38,9 +45,9 @@ class DockerSandbox(Sandbox):
             "sh", "-c", command,
         ]
 
-    def run(self, command: str, timeout: int = 60) -> str:
+    def run_result(self, command: str, timeout: int = 60) -> CommandResult:
         if not command.strip():
-            return "Error: empty command."
+            return CommandResult(None, "Error: empty command.")
         try:
             proc = subprocess.run(
                 self.build_command(command),
@@ -49,13 +56,21 @@ class DockerSandbox(Sandbox):
                 timeout=timeout,
             )
         except FileNotFoundError:
-            return "Error: docker is not installed or not on PATH."
+            return CommandResult(None, "Error: docker is not installed or not on PATH.")
         except subprocess.TimeoutExpired:
-            return f"Error: command timed out after {timeout} seconds."
+            return CommandResult(None, f"Error: command timed out after {timeout} seconds.")
+        except OSError as exc:
+            return CommandResult(None, f"Error: failed to start docker: {exc}")
 
         output = (proc.stdout or "") + (proc.stderr or "")
         if len(output) > MAX_OUTPUT_CHARS:
             output = output[:MAX_OUTPUT_CHARS] + "\n... (truncated)"
-        if proc.returncode:
-            return f"Error: command exited with status {proc.returncode}.\n{output}".rstrip()
-        return output or "(no output)"
+        return CommandResult(proc.returncode, output or "(no output)")
+
+    def run(self, command: str, timeout: int = 60) -> str:
+        result = self.run_result(command, timeout)
+        if result.exit_code is None:
+            return result.output
+        if result.exit_code:
+            return f"Error: command exited with status {result.exit_code}.\n{result.output}".rstrip()
+        return result.output
