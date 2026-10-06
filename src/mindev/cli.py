@@ -69,17 +69,17 @@ def _cmd_run(args: argparse.Namespace) -> int:
     registry_tools = [ReadTool()]
     if not args.plan:
         sandbox = DockerSandbox() if args.sandbox == "docker" else LocalSandbox()
-        registry_tools += [
-            WriteFileTool(snapshots),
-            EditFileTool(snapshots),
-            BashTool(sandbox),
+        registry_tools += [WriteFileTool(snapshots), EditFileTool(snapshots)]
+        if not args.no_bash:
+            registry_tools.append(BashTool(sandbox))
+        registry_tools.append(
             ExploreTool(
                 ExploreSubagent(
                     lambda: OpenAIProvider(model=args.model, system=EXPLORE_INSTRUCTIONS),
                     ToolRegistry([ReadTool()]),
                 )
-            ),
-        ]
+            )
+        )
 
     mcp_clients = []
     if args.mcp:
@@ -200,7 +200,12 @@ def build_parser() -> argparse.ArgumentParser:
         "--sandbox",
         choices=["local", "docker"],
         default="local",
-        help="Where to run bash commands (default: local).",
+        help="Where to run commands: local PowerShell on Windows, sh on Unix, or Docker sh.",
+    )
+    run_p.add_argument(
+        "--no-bash",
+        action="store_true",
+        help="Disable the command tool (file reading and editing remain available).",
     )
     run_p.add_argument(
         "--no-repomap",

@@ -43,7 +43,8 @@ mindev run "列出当前目录的文件"
 
 > 默认模型 `gpt-5-mini`（可用 `MINIDEV_MODEL` 环境变量覆盖；`gpt-5` 系列里带 `-codex` 的模型需更高权限，普通账号无访问权限）。
 > 支持任意 OpenAI 兼容后端：设 `OPENAI_BASE_URL` 即可切换 DeepSeek（`https://api.deepseek.com`）、OpenRouter（`https://openrouter.ai/api/v1`）等。
-> 命令默认在宿主机执行（`--sandbox local`）；加 `--sandbox docker` 可在 Docker 容器里跑（进程/网络隔离，需本机已装 Docker）。
+> `bash` 工具的实际语法随执行环境变化：Windows 的 `--sandbox local` 使用 PowerShell 5.1，Unix 使用 `/bin/sh`，`--sandbox docker` 在容器内使用 `sh`。工具说明会告诉模型当前语法；`--no-bash` 可禁用命令工具。
+> 本地命令在宿主机运行；`cwd` 只是起始工作目录，命令仍能访问目录外文件。Docker 仅隔离命令进程，文件读写工具仍在宿主机执行。
 > 每次运行会自动用 tree-sitter 生成 RepoMap（文件树 + 顶层函数/类 + 行号）注入系统提示词，加 `--no-repomap` 可关闭。
 > 加 `--plan` 进入只读规划模式（不改文件、不跑命令，只产出方案）；默认对写文件/跑命令做交互确认，加 `--yes` 跳过确认。
 

@@ -5,6 +5,7 @@ runner records evidence; a passing test suite is not a semantic task verdict.
 """
 
 import argparse
+import hashlib
 import json
 import os
 import subprocess
@@ -228,6 +229,16 @@ def count_tool_calls(trace: Path) -> int:
     return count
 
 
+def agent_source_digest() -> str:
+    """Fingerprint the Agent code, which is separate from the task checkout."""
+    root = SOURCE / "src" / "mindev"
+    digest = hashlib.sha256()
+    for path in sorted(root.rglob("*.py")):
+        digest.update(path.relative_to(root).as_posix().encode("utf-8"))
+        digest.update(path.read_bytes())
+    return digest.hexdigest()
+
+
 def execute(command: list[str], cwd: Path, env: dict[str, str],
             stdout_path: Path, stderr_path: Path, timeout: int) -> dict:
     started = time.monotonic()
@@ -311,21 +322,23 @@ def run_case(case_id: int, output_root: Path, model_override: str | None,
         result["model"] = model
         result["api_type"] = "openai_compatible_chat_completions"
         result["api_endpoint_host"] = urlsplit(endpoint).hostname
+        result["agent_source_sha256"] = agent_source_digest()
 
-        env = os.environ.copy()
-        env["PYTHONPATH"] = str(checkout / "src") + os.pathsep + env.get("PYTHONPATH", "")
+        agent_env = os.environ.copy()
+        agent_env["PYTHONPATH"] = str(SOURCE / "src") + os.pathsep + agent_env.get("PYTHONPATH", "")
         trace = run_dir / "trace.jsonl"
         agent_cmd = [sys.executable, "-m", "mindev.cli", "run", "--yes",
-                     "--model", model, "--trace", str(trace), case["prompt"]]
+                     "--no-bash", "--model", model, "--trace", str(trace), case["prompt"]]
         result["agent_command"] = ["<python>", *agent_cmd[1:]]
-        result["agent"] = execute(agent_cmd, checkout, env,
+        result["agent"] = execute(agent_cmd, checkout, agent_env,
                                   run_dir / "agent.stdout.log", run_dir / "agent.stderr.log", timeout)
         result["tool_calls"] = count_tool_calls(trace)
         result["trace_file"] = "trace.jsonl"
 
         test_cmd = [sys.executable, "-m", "pytest", *case["tests"], "-q"]
         result["test_command"] = ["<python>", *test_cmd[1:]]
-        test_env = env.copy()
+        test_env = os.environ.copy()
+        test_env["PYTHONPATH"] = str(checkout / "src") + os.pathsep + test_env.get("PYTHONPATH", "")
         test_env.pop("OPENAI_API_KEY", None)
         result["tests"] = execute(test_cmd, checkout, test_env,
                                   run_dir / "tests.stdout.log", run_dir / "tests.stderr.log", test_timeout)

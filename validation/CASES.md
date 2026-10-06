@@ -8,6 +8,7 @@
 - 成功由**最终文件状态和下列检查**判定，不能仅凭 Agent 的最终回答。超时、接口故障、评测环境故障记为“无效运行”，与任务失败分开统计。
 - 除各任务列出的允许改动文件外，其他跟踪文件必须与基线保持一致。评测产生的临时文件和 trace 单独保存。
 - 单题运行器：从项目根目录执行 `.venv\Scripts\python.exe validation\run_case.py --case 1`（`1` 可换为 `1` 至 `20`）。每次只跑一题，默认在系统临时目录的 `mindev-validation` 下新建独立 checkout 与结果目录。此命令会调用配置的模型；只检查隔离准备时加 `--prepare-only`，不会调用模型。`result.json` 中 `execution_status=invalid` 表示接口、超时或环境故障，`task_outcome=failed` 表示有效运行后检查未通过，自动题检查通过记 `passed`，人工题记 `needs_review` 直至人工审阅。手工复核前在原项目根目录执行 `$Python = (Resolve-Path .venv\Scripts\python.exe).Path`，进入 checkout 后可用下文命令。
+- 运行器以**当前工作树的 Agent 实现**操作固定基线 checkout；测试与自动判定则加载 checkout 中的候选代码。`result.json` 记录 Agent 源码 SHA-256，便于复核不同实现。评测运行添加 `--no-bash`，使 Agent 无法调用命令工具越出 checkout；文件读写工具仍能处理绝对路径，完整路径隔离留待安全阶段处理。
 - 在每题 checkout 内执行 `git diff --stat 2671d40db5342f230f22f6cad66745639c97f7bc -- .` 核对跟踪文件改动，再用 `git ls-files --others --exclude-standard` 找新增的非忽略文件。运行器把这两类文件及完整 diff 写入结果目录；不允许范围外的文件变更。
 
 ## 用例 1：新增 `read_lines`

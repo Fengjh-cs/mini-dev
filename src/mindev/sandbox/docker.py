@@ -14,6 +14,10 @@ MAX_OUTPUT_CHARS = 20_000
 
 
 class DockerSandbox(Sandbox):
+    @property
+    def shell_hint(self) -> str:
+        return "POSIX sh syntax inside the Docker container."
+
     def __init__(
         self,
         image: str = "python:3.13-slim",

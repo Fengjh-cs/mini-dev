@@ -15,6 +15,11 @@ class BashTool(Tool):
 
     def __init__(self, sandbox: Sandbox | None = None) -> None:
         self._sandbox = sandbox or LocalSandbox()
+        self.description = (
+            "Run a shell command and return its combined stdout/stderr. "
+            "Use for listing files, running tests, git, or build commands. "
+            + self._sandbox.shell_hint
+        )
 
     def parameters(self) -> dict:
         return {

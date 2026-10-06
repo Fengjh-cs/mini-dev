@@ -217,3 +217,28 @@ def test_remaining_automatic_checks_accept_reference_fixes(tmp_path):
     verify(15, "src/mindev/tools/registry.py",
            lambda s: s + "\n    def names(self) -> list[str]:\n"
                          "        return sorted(self._tools)\n")
+
+
+def test_runner_uses_current_agent_and_checks_baseline_code(tmp_path, monkeypatch):
+    import dotenv
+
+    monkeypatch.setattr(dotenv, "load_dotenv", lambda *a, **k: None)
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
+    calls = []
+
+    def fake_execute(command, cwd, env, stdout_path, stderr_path, timeout):
+        calls.append((command, cwd, env))
+        return {"exit_code": 0, "timed_out": False, "seconds": 0}
+
+    monkeypatch.setattr(run_case, "execute", fake_execute)
+    path = run_case.run_case(1, tmp_path, "test-model", 10, 10)
+    result = json.loads(path.read_text(encoding="utf-8"))
+    checkout = path.parent / "checkout"
+    assert len(calls) == 3  # Agent, original tests, deterministic checker
+    assert "--no-bash" in calls[0][0]
+    assert calls[0][1] == checkout
+    assert calls[0][2]["PYTHONPATH"].split(os.pathsep)[0] == str(run_case.SOURCE / "src")
+    assert calls[1][2]["PYTHONPATH"].split(os.pathsep)[0] == str(checkout / "src")
+    assert calls[2][2]["PYTHONPATH"].split(os.pathsep)[0] == str(checkout / "src")
+    assert result["checkout_head"] == run_case.BASELINE
+    assert len(result["agent_source_sha256"]) == 64

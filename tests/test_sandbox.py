@@ -1,11 +1,28 @@
+import os
 import subprocess
 
 from mindev.sandbox.docker import DockerSandbox
 from mindev.sandbox.local import LocalSandbox
+from mindev.tools.bash import BashTool
 
 
 def test_local_sandbox_runs_echo():
     assert "hello" in LocalSandbox().run("echo hello")
+
+
+def test_local_sandbox_uses_platform_shell_and_fixed_cwd(tmp_path):
+    assert LocalSandbox.build_command("echo hi", "nt") == [
+        "powershell.exe", "-NoLogo", "-NoProfile", "-NonInteractive", "-Command", "echo hi"]
+    assert LocalSandbox.build_command("echo hi", "posix") == ["/bin/sh", "-c", "echo hi"]
+    command = "(Get-Location).Path" if os.name == "nt" else "pwd"
+    assert str(tmp_path).lower() in LocalSandbox(cwd=str(tmp_path)).run(command).lower()
+
+
+def test_bash_tool_describes_actual_shell(tmp_path):
+    local = BashTool(LocalSandbox(cwd=str(tmp_path))).schema()["function"]["description"]
+    docker = BashTool(DockerSandbox(host_dir=str(tmp_path))).schema()["function"]["description"]
+    assert ("PowerShell" if os.name == "nt" else "POSIX sh") in local
+    assert "POSIX sh" in docker
 
 
 def test_local_sandbox_empty_command():
