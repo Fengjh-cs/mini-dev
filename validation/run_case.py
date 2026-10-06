@@ -21,19 +21,164 @@ BASELINE = "2671d40db5342f230f22f6cad66745639c97f7bc"
 SOURCE = Path(__file__).resolve().parents[1]
 CASES = {
     1: {
+        "title": "read_lines 前 N 行",
+        "difficulty": "medium",
+        "grading": "automatic",
         "prompt": "在 src/mindev/tools/read.py 里加一个 read_lines(path, n) 函数，返回前 n 行。",
         "allowed": ["src/mindev/tools/read.py"],
         "tests": ["tests/test_tools.py"],
     },
     2: {
+        "title": "估算注释准确性",
+        "difficulty": "easy",
+        "grading": "manual",
         "prompt": "把 src/mindev/context/repomap.py 里 estimate_tokens 的注释改得更准确。",
         "allowed": ["src/mindev/context/repomap.py"],
         "tests": ["tests/test_repomap.py", "tests/test_repomap_multilang.py"],
     },
     3: {
+        "title": "读取输出上限",
+        "difficulty": "easy",
+        "grading": "automatic",
         "prompt": "把 src/mindev/tools/read.py 的 MAX_OUTPUT_CHARS 从 20000 改成 10000，其他逻辑保持不变。",
         "allowed": ["src/mindev/tools/read.py"],
         "tests": ["tests/test_tools.py"],
+    },
+    4: {
+        "title": "编辑长度上限",
+        "difficulty": "easy",
+        "grading": "automatic",
+        "prompt": "把 src/mindev/tools/edit.py 的 MAX_EDIT_CHARS 从 100000 改为 50000，其他源码保持不变。",
+        "allowed": ["src/mindev/tools/edit.py"],
+        "tests": ["tests/test_edit.py"],
+    },
+    5: {
+        "title": "本地命令输出上限",
+        "difficulty": "easy",
+        "grading": "automatic",
+        "prompt": "把 src/mindev/sandbox/local.py 的 MAX_OUTPUT_CHARS 从 20000 改为 10000，其他源码保持不变。",
+        "allowed": ["src/mindev/sandbox/local.py"],
+        "tests": ["tests/test_sandbox.py"],
+    },
+    6: {
+        "title": "写文件时创建父目录",
+        "difficulty": "medium",
+        "grading": "automatic",
+        "prompt": "修改 src/mindev/tools/edit.py：WriteFileTool 写入嵌套路径时自动创建缺失的父目录，仍保持原有覆盖文件行为。",
+        "allowed": ["src/mindev/tools/edit.py"],
+        "tests": ["tests/test_edit.py"],
+    },
+    7: {
+        "title": "编辑无变化时跳过快照",
+        "difficulty": "medium",
+        "grading": "automatic",
+        "prompt": "修改 src/mindev/tools/edit.py：EditFileTool 在 old_string 与 new_string 完全相同时返回可识别的 no-op，不写文件、不创建快照；其他编辑行为不变。",
+        "allowed": ["src/mindev/tools/edit.py"],
+        "tests": ["tests/test_edit.py"],
+    },
+    8: {
+        "title": "快照存在性查询",
+        "difficulty": "medium",
+        "grading": "automatic",
+        "prompt": "在 src/mindev/tools/snapshot.py 的 SnapshotStore 增加 has_snapshot(path) 方法：未快照返回 False，快照后返回 True，restore 后返回 False。",
+        "allowed": ["src/mindev/tools/snapshot.py"],
+        "tests": ["tests/test_edit.py"],
+    },
+    9: {
+        "title": "拒绝重复工具名",
+        "difficulty": "medium",
+        "grading": "automatic",
+        "prompt": "修改 src/mindev/tools/registry.py：ToolRegistry 构造时如果两个工具的 name 相同，抛出 ValueError，而不是静默覆盖；正常工具注册保持可用。",
+        "allowed": ["src/mindev/tools/registry.py"],
+        "tests": ["tests/test_tools.py"],
+    },
+    10: {
+        "title": "追踪压缩次数",
+        "difficulty": "easy",
+        "grading": "automatic",
+        "prompt": "修改 src/mindev/agent/trace.py：TraceRecorder.summarize() 返回值增加 compact_events，表示 kind 为 compact 的事件数量，已有统计字段不变。",
+        "allowed": ["src/mindev/agent/trace.py"],
+        "tests": ["tests/test_trace.py"],
+    },
+    11: {
+        "title": "清空内存追踪事件",
+        "difficulty": "medium",
+        "grading": "automatic",
+        "prompt": "在 src/mindev/agent/trace.py 为 TraceRecorder 增加 clear()：只清空内存中的 events，保留已有 JSONL 文件；清空后仍可继续 record。",
+        "allowed": ["src/mindev/agent/trace.py"],
+        "tests": ["tests/test_trace.py"],
+    },
+    12: {
+        "title": "删除会话文件",
+        "difficulty": "medium",
+        "grading": "automatic",
+        "prompt": "在 src/mindev/agent/session.py 为 SessionStore 增加 delete()：删除当前会话文件；文件不存在时也不报错。",
+        "allowed": ["src/mindev/agent/session.py"],
+        "tests": ["tests/test_session.py"],
+    },
+    13: {
+        "title": "未知风险默认拒绝",
+        "difficulty": "hard",
+        "grading": "automatic",
+        "prompt": "修改 src/mindev/agent/permissions.py：PermissionPolicy.allow 对未知 risk 值一律返回 False；read、write、command 的现有权限行为保持不变。",
+        "allowed": ["src/mindev/agent/permissions.py"],
+        "tests": ["tests/test_permissions.py"],
+    },
+    14: {
+        "title": "RepoMap 支持 pyi",
+        "difficulty": "hard",
+        "grading": "automatic",
+        "prompt": "修改 src/mindev/context/repomap.py：RepoMap 把 .pyi 文件纳入源码列表，并像 .py 一样提取顶层函数和类符号。",
+        "allowed": ["src/mindev/context/repomap.py"],
+        "tests": ["tests/test_repomap.py", "tests/test_repomap_multilang.py"],
+    },
+    15: {
+        "title": "列出已注册工具名",
+        "difficulty": "medium",
+        "grading": "automatic",
+        "prompt": "在 src/mindev/tools/registry.py 为 ToolRegistry 增加 names() 方法，返回按字母序排列的已注册工具名列表，不改变 schemas() 顺序。",
+        "allowed": ["src/mindev/tools/registry.py"],
+        "tests": ["tests/test_tools.py"],
+    },
+    16: {
+        "title": "README 评测口径说明",
+        "difficulty": "medium",
+        "grading": "manual",
+        "prompt": "更新 README.md：向读者解释内置 3 题 eval 与真实仓库任务评测的区别，以及自动判定题和人工审阅题的成功率应分别报告。不要编造尚未测得的通过率。",
+        "allowed": ["README.md"],
+        "tests": ["tests/test_cli.py"],
+    },
+    17: {
+        "title": "设计文档与实现对齐",
+        "difficulty": "hard",
+        "grading": "manual",
+        "prompt": "只修改 DESIGN.md，修正其中与当前仓库实现不一致的文件编辑和沙箱描述，并说明默认 local 命令执行的实际边界。",
+        "allowed": ["DESIGN.md"],
+        "tests": ["tests/test_cli.py"],
+    },
+    18: {
+        "title": "CLI 帮助文字",
+        "difficulty": "medium",
+        "grading": "manual",
+        "prompt": "只修改 src/mindev/cli.py，改善 --trace、--plan、--yes 的帮助文字，让新用户清楚副作用和输出位置；选项行为保持不变。",
+        "allowed": ["src/mindev/cli.py"],
+        "tests": ["tests/test_cli.py"],
+    },
+    19: {
+        "title": "Agent 循环重构",
+        "difficulty": "hard",
+        "grading": "manual",
+        "prompt": "只修改 src/mindev/agent/loop.py，将 run 中工具执行与结果回灌的逻辑提取为易读的私有方法；保持权限、trace、observer 和退出行为不变。",
+        "allowed": ["src/mindev/agent/loop.py"],
+        "tests": ["tests/test_loop.py", "tests/test_permissions.py", "tests/test_trace.py"],
+    },
+    20: {
+        "title": "Provider 错误提示",
+        "difficulty": "hard",
+        "grading": "manual",
+        "prompt": "只修改 src/mindev/llm/openai.py，让 Chat Completions 请求失败时给出可操作的错误信息，但不泄露 API key；正常响应和工具调用行为保持不变。",
+        "allowed": ["src/mindev/llm/openai.py"],
+        "tests": ["tests/test_openai.py", "tests/test_stream.py"],
     },
 }
 
@@ -100,18 +245,28 @@ def execute(command: list[str], cwd: Path, env: dict[str, str],
                     "seconds": round(time.monotonic() - started, 3)}
 
 
-def classify(agent: dict, tests: dict, changes: dict, allowed: list[str]) -> tuple[str, str | None, str]:
+def classify(agent: dict, tests: dict, changes: dict, allowed: list[str],
+             grading: str = "manual", automatic: dict | None = None) -> tuple[str, str | None, str]:
     if agent["timed_out"] or agent["exit_code"] != 0:
         return "invalid", None, "agent_timeout_or_nonzero_exit"
-    if tests["timed_out"] or tests["exit_code"] not in (0, 1):
+    if tests["timed_out"] or tests["exit_code"] not in (0, 1, 2):
         return "invalid", None, "test_environment_error"
-    if tests["exit_code"] == 1:
+    if tests["exit_code"] in (1, 2):
         return "valid", "failed", "existing_tests_failed"
     unexpected = (set(changes["tracked_files"]) - set(allowed)) | set(changes["untracked_files"])
     if changes["env_created"] or unexpected:
         return "valid", "failed", "files_outside_allowed_set"
     if not changes["tracked_files"]:
         return "valid", "failed", "no_source_change"
+    if grading == "automatic":
+        if automatic is None or automatic.get("timed_out") or automatic.get("exit_code") not in (0, 1):
+            return "invalid", None, "checker_environment_error"
+        passed = automatic.get("result", {}).get("passed")
+        if not isinstance(passed, bool) or (automatic["exit_code"] == 0) != passed:
+            return "invalid", None, "checker_result_mismatch"
+        if not passed:
+            return "valid", "failed", "automatic_checks_failed"
+        return "valid", "passed", "automatic_checks_passed"
     return "valid", "needs_review", "manual_case_checks_pending"
 
 
@@ -126,6 +281,9 @@ def run_case(case_id: int, output_root: Path, model_override: str | None,
     result = {
         "schema_version": 1,
         "case": case_id,
+        "title": case["title"],
+        "difficulty": case["difficulty"],
+        "grading": case["grading"],
         "baseline": BASELINE,
         "prompt": case["prompt"],
         "allowed_files": case["allowed"],
@@ -167,13 +325,29 @@ def run_case(case_id: int, output_root: Path, model_override: str | None,
 
         test_cmd = [sys.executable, "-m", "pytest", *case["tests"], "-q"]
         result["test_command"] = ["<python>", *test_cmd[1:]]
-        result["tests"] = execute(test_cmd, checkout, env,
+        test_env = env.copy()
+        test_env.pop("OPENAI_API_KEY", None)
+        result["tests"] = execute(test_cmd, checkout, test_env,
                                   run_dir / "tests.stdout.log", run_dir / "tests.stderr.log", test_timeout)
         result["changes"] = collect_changes(checkout, run_dir)
+        automatic = None
+        if case["grading"] == "automatic":
+            checks_file = run_dir / "automatic_checks.json"
+            checker_cmd = [sys.executable, str(SOURCE / "validation" / "checks.py"),
+                           "--case", str(case_id), "--checkout", str(checkout),
+                           "--baseline", BASELINE, "--scratch-root", str(run_dir),
+                           "--output", str(checks_file)]
+            automatic = execute(checker_cmd, checkout, test_env,
+                                run_dir / "checker.stdout.log", run_dir / "checker.stderr.log", test_timeout)
+            if checks_file.exists():
+                automatic["result"] = json.loads(checks_file.read_text(encoding="utf-8"))
+            result["automatic_checks"] = automatic
         status, outcome, reason = classify(result["agent"], result["tests"],
-                                           result["changes"], case["allowed"])
+                                           result["changes"], case["allowed"],
+                                           case["grading"], automatic)
         result.update(execution_status=status, task_outcome=outcome, reason=reason)
-    except (OSError, subprocess.CalledProcessError, RuntimeError, AssertionError) as exc:
+    except (OSError, subprocess.CalledProcessError, RuntimeError,
+            AssertionError, json.JSONDecodeError) as exc:
         result["reason"] = "setup_or_collection_error"
         result["error_type"] = type(exc).__name__
     return _save_result(run_dir, result)
@@ -200,8 +374,9 @@ def main() -> int:
     path = run_case(args.case, args.output_root, args.model,
                     args.timeout, args.test_timeout, args.prepare_only)
     result = json.loads(path.read_text(encoding="utf-8"))
-    print(f"{result['execution_status']}: {result['reason']}\n{path}")
-    return 0 if result["execution_status"] in ("prepared", "valid") else 1
+    print(f"{result['execution_status']}/{result['task_outcome']}: {result['reason']}\n{path}")
+    return 0 if result["execution_status"] == "prepared" or result["task_outcome"] in (
+        "passed", "needs_review") else 1
 
 
 if __name__ == "__main__":
