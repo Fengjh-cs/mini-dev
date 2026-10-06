@@ -230,6 +230,31 @@ def count_tool_calls(trace: Path) -> int:
     return count
 
 
+def context_estimate(trace: Path) -> dict:
+    """Report character/4 context snapshots, never API-billed tokens."""
+    values: list[int] = []
+    reductions: list[int] = []
+    if trace.exists():
+        for line in trace.read_text(encoding="utf-8", errors="replace").splitlines():
+            try:
+                event = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            if isinstance(event.get("tokens"), int):
+                values.append(event["tokens"])
+            before = event.get("tokens_before")
+            after = event.get("tokens")
+            if event.get("kind") == "compact" and isinstance(before, int) and isinstance(after, int):
+                values.append(before)
+                reductions.append(before - after)
+    return {
+        "source": "trace_character_count_divided_by_four",
+        "peak_observed_context_tokens": max(values) if values else None,
+        "compaction_events": len(reductions),
+        "compaction_reduction_tokens": sum(reductions) if reductions else None,
+    }
+
+
 def agent_source_digest() -> str:
     """Fingerprint the Agent code, which is separate from the task checkout."""
     root = SOURCE / "src" / "mindev"
@@ -283,7 +308,8 @@ def classify(agent: dict, tests: dict, changes: dict, allowed: list[str],
 
 
 def run_case(case_id: int, output_root: Path, model_override: str | None,
-             timeout: int, test_timeout: int, prepare_only: bool = False) -> Path:
+             timeout: int, test_timeout: int, prepare_only: bool = False,
+             repomap: bool = True, compact_threshold: int = 20000) -> Path:
     case = CASES[case_id]
     run_dir = output_root.resolve() / (
         f"{datetime.now(timezone.utc):%Y%m%dT%H%M%SZ}-case{case_id}-{uuid.uuid4().hex[:8]}"
@@ -303,8 +329,11 @@ def run_case(case_id: int, output_root: Path, model_override: str | None,
         "execution_status": "invalid",
         "task_outcome": None,
         "reason": "setup_incomplete",
+        "configuration": {"repomap": repomap, "compact_threshold": compact_threshold,
+                          "no_bash": True, "stream": False},
         "api_usage": None,
-        "api_usage_note": "Provider does not expose response usage; trace token estimates are not API usage.",
+        "api_usage_note": "No API usage artifact recorded yet.",
+        "context_estimate": None,
     }
     try:
         prepare_checkout(checkout)
@@ -328,15 +357,32 @@ def run_case(case_id: int, output_root: Path, model_override: str | None,
         agent_env = os.environ.copy()
         agent_env["PYTHONPATH"] = str(SOURCE / "src") + os.pathsep + agent_env.get("PYTHONPATH", "")
         trace = run_dir / "trace.jsonl"
+        usage_file = run_dir / "api_usage.json"
         agent_workspace = run_dir / "agent-workspace"
         agent_cmd = [sys.executable, "-m", "mindev.cli", "run", "--yes",
                      "--no-bash", "--output-dir", str(agent_workspace),
-                     "--model", model, "--trace", str(trace), case["prompt"]]
+                     "--model", model, "--trace", str(trace),
+                     "--usage-file", str(usage_file),
+                     "--compact-threshold", str(compact_threshold)]
+        if not repomap:
+            agent_cmd.append("--no-repomap")
+        agent_cmd.append(case["prompt"])
         result["agent_command"] = ["<python>", *agent_cmd[1:]]
         result["agent"] = execute(agent_cmd, checkout, agent_env,
                                   run_dir / "agent.stdout.log", run_dir / "agent.stderr.log", timeout)
         result["tool_calls"] = count_tool_calls(trace)
         result["trace_file"] = "trace.jsonl"
+        result["context_estimate"] = context_estimate(trace)
+        if usage_file.exists():
+            result["api_usage"] = json.loads(usage_file.read_text(encoding="utf-8"))
+            result["api_usage_file"] = "api_usage.json"
+            result["api_usage_note"] = (
+                "All recorded API responses include usage."
+                if result["api_usage"].get("complete") else
+                "Some API responses omitted usage; token totals are unknown."
+            )
+        else:
+            result["api_usage_note"] = "API usage artifact missing; token totals are unknown."
 
         if not agent_workspace.is_dir():
             raise RuntimeError("Agent did not create its isolated workspace")
@@ -392,11 +438,15 @@ def main() -> int:
     parser.add_argument("--timeout", type=int, default=300, help="Agent timeout in seconds")
     parser.add_argument("--test-timeout", type=int, default=120, help="Pytest timeout in seconds")
     parser.add_argument("--prepare-only", action="store_true", help="Create checkout without API calls")
+    parser.add_argument("--no-repomap", action="store_true", help="Disable RepoMap in this run")
+    parser.add_argument("--compact-threshold", type=int, default=20000,
+                        help="Context estimate threshold; 0 disables compaction")
     args = parser.parse_args()
-    if args.timeout <= 0 or args.test_timeout <= 0:
-        parser.error("timeouts must be positive")
+    if args.timeout <= 0 or args.test_timeout <= 0 or args.compact_threshold < 0:
+        parser.error("timeouts must be positive and compact threshold nonnegative")
     path = run_case(args.case, args.output_root, args.model,
-                    args.timeout, args.test_timeout, args.prepare_only)
+                    args.timeout, args.test_timeout, args.prepare_only,
+                    not args.no_repomap, args.compact_threshold)
     result = json.loads(path.read_text(encoding="utf-8"))
     print(f"{result['execution_status']}/{result['task_outcome']}: {result['reason']}\n{path}")
     return 0 if result["execution_status"] == "prepared" or result["task_outcome"] in (

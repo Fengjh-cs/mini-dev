@@ -12,6 +12,7 @@ from collections.abc import Callable
 from openai import OpenAI
 
 from .base import LLMProvider, ToolCall, Turn
+from .usage import ApiUsageTracker
 
 DEFAULT_MODEL = "gpt-5-mini"
 DEFAULT_SYSTEM = (
@@ -29,6 +30,8 @@ class OpenAIProvider(LLMProvider):
         base_url: str | None = None,
         system: str | None = None,
         on_token: Callable[[str], None] | None = None,
+        usage_tracker: ApiUsageTracker | None = None,
+        usage_kind: str = "agent",
     ) -> None:
         self.model = model or os.getenv("MINIDEV_MODEL", DEFAULT_MODEL)
         self._client = OpenAI(
@@ -36,6 +39,8 @@ class OpenAIProvider(LLMProvider):
             base_url=base_url or os.getenv("OPENAI_BASE_URL") or None,
         )
         self._on_token = on_token
+        self._usage = usage_tracker if usage_tracker is not None else ApiUsageTracker()
+        self._usage_kind = usage_kind
         system = system if system is not None else DEFAULT_SYSTEM
         self._messages: list[dict] = []
         if system:
@@ -53,7 +58,12 @@ class OpenAIProvider(LLMProvider):
         kwargs: dict = {"model": self.model, "messages": self._messages}
         if tools:
             kwargs["tools"] = tools
-        response = self._client.chat.completions.create(**kwargs)
+        try:
+            response = self._client.chat.completions.create(**kwargs)
+        except Exception:
+            self._usage.record(self._usage_kind, None)
+            raise
+        self._usage.record(self._usage_kind, getattr(response, "usage", None))
         message = response.choices[0].message
 
         assistant: dict = {"role": "assistant", "content": message.content or ""}
@@ -83,31 +93,44 @@ class OpenAIProvider(LLMProvider):
         return Turn(text=message.content or "", tool_calls=tool_calls)
 
     def _send_stream(self, tools: list[dict]) -> Turn:
-        kwargs: dict = {"model": self.model, "messages": self._messages, "stream": True}
+        kwargs: dict = {
+            "model": self.model, "messages": self._messages, "stream": True,
+            "stream_options": {"include_usage": True},
+        }
         if tools:
             kwargs["tools"] = tools
-        stream = self._client.chat.completions.create(**kwargs)
+        try:
+            stream = self._client.chat.completions.create(**kwargs)
+        except Exception:
+            self._usage.record(self._usage_kind, None)
+            raise
 
         content_parts: list[str] = []
         pending: dict[int, dict] = {}
-        for chunk in stream:
-            if not chunk.choices:
-                continue
-            delta = chunk.choices[0].delta
-            if getattr(delta, "content", None):
-                content_parts.append(delta.content)
-                self._on_token(delta.content)
-            for tc in getattr(delta, "tool_calls", None) or []:
-                entry = pending.setdefault(
-                    tc.index, {"id": "", "name": "", "arguments": ""}
-                )
-                if tc.id:
-                    entry["id"] = tc.id
-                if tc.function:
-                    if tc.function.name:
-                        entry["name"] += tc.function.name
-                    if tc.function.arguments:
-                        entry["arguments"] += tc.function.arguments
+        usage = None
+        try:
+            for chunk in stream:
+                if getattr(chunk, "usage", None) is not None:
+                    usage = chunk.usage
+                if not chunk.choices:
+                    continue
+                delta = chunk.choices[0].delta
+                if getattr(delta, "content", None):
+                    content_parts.append(delta.content)
+                    self._on_token(delta.content)
+                for tc in getattr(delta, "tool_calls", None) or []:
+                    entry = pending.setdefault(
+                        tc.index, {"id": "", "name": "", "arguments": ""}
+                    )
+                    if tc.id:
+                        entry["id"] = tc.id
+                    if tc.function:
+                        if tc.function.name:
+                            entry["name"] += tc.function.name
+                        if tc.function.arguments:
+                            entry["arguments"] += tc.function.arguments
+        finally:
+            self._usage.record(self._usage_kind, usage)
 
         text = "".join(content_parts)
         assistant: dict = {"role": "assistant", "content": text}
@@ -172,17 +195,22 @@ class OpenAIProvider(LLMProvider):
         transcript = "\n".join(
             f"{m.get('role')}: {str(m.get('content', ''))[:1000]}" for m in messages
         )
-        resp = self._client.chat.completions.create(
-            model=self.model,
-            messages=[
-                {
-                    "role": "system",
-                    "content": "Summarize this coding-agent conversation into a "
-                    "concise list of key facts, decisions, and pending tasks.",
-                },
-                {"role": "user", "content": transcript},
-            ],
-        )
+        try:
+            resp = self._client.chat.completions.create(
+                model=self.model,
+                messages=[
+                    {
+                        "role": "system",
+                        "content": "Summarize this coding-agent conversation into a "
+                        "concise list of key facts, decisions, and pending tasks.",
+                    },
+                    {"role": "user", "content": transcript},
+                ],
+            )
+        except Exception:
+            self._usage.record("compaction", None)
+            raise
+        self._usage.record("compaction", getattr(resp, "usage", None))
         return resp.choices[0].message.content or ""
 
     def export_state(self) -> dict:

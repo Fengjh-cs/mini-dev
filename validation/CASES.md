@@ -5,6 +5,7 @@
 - 基线提交：`2671d40db5342f230f22f6cad66745639c97f7bc`。20 个任务各从此提交创建**独立、干净**的工作目录；任务之间不继承改动。
 - 只复制该提交跟踪的项目文件。不要把 `.env`、本评测文件、评分规则或其他本地凭据放进 Agent 工作目录。
 - 每次运行记录模型 ID、接口类型、任务提示、退出状态、工具调用次数、耗时、接口实际用量（若接口提供）、最终文件差异及测试结果。比较不同实现时保持模型与运行参数一致。
+- `result.json` 的 `api_usage` 和单独的 `api_usage.json` 只统计 API 响应返回的 `usage`，包含主 Agent、`explore` 子 Agent、压缩摘要请求。若任一响应缺少完整用量，`complete=false`，token 总量为 `null`。`context_estimate` 来自 trace 中的字符数除以 4，仅是观测到的上下文估算；不可当作 API 计费 token。
 - 成功由**最终文件状态和下列检查**判定，不能仅凭 Agent 的最终回答。超时、接口故障、评测环境故障记为“无效运行”，与任务失败分开统计。
 - 除各任务列出的允许改动文件外，其他跟踪文件必须与基线保持一致。评测产生的临时文件和 trace 单独保存。
 - 单题运行器：从项目根目录执行 `.venv\Scripts\python.exe validation\run_case.py --case 1`（`1` 可换为 `1` 至 `20`）。每次只跑一题，默认在系统临时目录的 `mindev-validation` 下新建独立 checkout 与结果目录。此命令会调用配置的模型；只检查隔离准备时加 `--prepare-only`，不会调用模型。`result.json` 中 `execution_status=invalid` 表示接口、超时或环境故障，`task_outcome=failed` 表示有效运行后检查未通过，自动题检查通过记 `passed`，人工题记 `needs_review` 直至人工审阅。手工复核前在原项目根目录执行 `$Python = (Resolve-Path .venv\Scripts\python.exe).Path`，进入 checkout 后可用下文命令。

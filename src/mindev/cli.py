@@ -1,6 +1,7 @@
 """Command-line entry point for mini-dev."""
 
 import argparse
+import json
 import os
 import shutil
 import sys
@@ -64,6 +65,7 @@ def _cmd_run(args: argparse.Namespace) -> int:
     from .context.prompter import build_system_prompt
     from .context.repomap import RepoMap
     from .llm.openai import OpenAIProvider
+    from .llm.usage import ApiUsageTracker
     from .sandbox.docker import DockerSandbox
     from .sandbox.workspace import create_workspace
     from .tools.access import AccessDenied, WorkspacePathPolicy
@@ -90,6 +92,7 @@ def _cmd_run(args: argparse.Namespace) -> int:
     try:
         session_path = artifact_path(args.session) if args.session else None
         trace_path = artifact_path(args.trace) if args.trace else None
+        usage_path = artifact_path(args.usage_file) if args.usage_file else None
     except AccessDenied as exc:
         print(f"Error: artifact path {exc}", file=sys.stderr)
         return 2
@@ -107,10 +110,12 @@ def _cmd_run(args: argparse.Namespace) -> int:
             "edit tool response. If a check fails, fix the code and edit again "
             "before finishing."
         )
+    usage_tracker = ApiUsageTracker()
     provider = OpenAIProvider(
         model=args.model,
         system=system_prompt,
         on_token=on_token,
+        usage_tracker=usage_tracker,
     )
 
     session_store = None
@@ -137,7 +142,10 @@ def _cmd_run(args: argparse.Namespace) -> int:
         registry_tools.append(
             ExploreTool(
                 ExploreSubagent(
-                    lambda: OpenAIProvider(model=args.model, system=EXPLORE_INSTRUCTIONS),
+                    lambda: OpenAIProvider(
+                        model=args.model, system=EXPLORE_INSTRUCTIONS,
+                        usage_tracker=usage_tracker, usage_kind="explore",
+                    ),
                     ToolRegistry([ReadTool(file_access)]),
                 )
             )
@@ -168,8 +176,14 @@ def _cmd_run(args: argparse.Namespace) -> int:
     try:
         result = loop.run(task)
     finally:
-        if session_store is not None:
-            session_store.save(provider)
+        try:
+            if session_store is not None:
+                session_store.save(provider)
+        finally:
+            if usage_path is not None:
+                Path(usage_path).write_text(
+                    json.dumps(usage_tracker.summary(), indent=2) + "\n", encoding="utf-8"
+                )
     print("\n" + "=" * 40)
     print(result)
     if recorder is not None:
@@ -302,6 +316,12 @@ def build_parser() -> argparse.ArgumentParser:
         default=None,
         metavar="FILE",
         help="Write a JSONL trace of tool calls to FILE.",
+    )
+    run_p.add_argument(
+        "--usage-file",
+        default=None,
+        metavar="FILE",
+        help="Write API-reported token usage and coverage to FILE (no prompts or key).",
     )
     run_p.add_argument(
         "--mcp",

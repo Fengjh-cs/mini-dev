@@ -71,8 +71,8 @@ MINIDEV_MODEL=deepseek-chat
 .venv/Scripts/mindev run --yes --no-bash --compact-threshold 0 --trace trace_off.jsonl "逐行解释 src/mindev/agent/loop.py 的 run 方法"
 ```
 
-- 分别从两次运行打印的工作副本路径中读取 `trace_on.jsonl` 和 `trace_off.jsonl`，对比每轮记录的 `tokens` 字段。
-- 简历第二个硬数字：**上下文压缩使 token 下降 X%**。
+- 分别从两次运行打印的工作副本路径中读取 `trace_on.jsonl` 和 `trace_off.jsonl`，对比每轮记录的 `tokens` 字段；这是字符数除以 4 的上下文估算，不能称为 API 实际用量。
+- 若要报告实际 token 用量及固定模型功能影响，按 [validation/COMPARE.md](validation/COMPARE.md) 对同一批任务运行 RepoMap/压缩四组配置，读取 API 响应的 `usage`；缺失值不能按 0 计算。
 
 ## 5. 收集 bad case（面试必问）
 

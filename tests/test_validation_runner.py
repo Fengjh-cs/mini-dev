@@ -6,7 +6,7 @@ import subprocess
 
 import pytest
 
-from validation import checks, review_case, run_case, summary
+from validation import checks, compare, review_case, run_case, summary
 
 
 def _git(repo, *args):
@@ -235,6 +235,11 @@ def test_runner_uses_current_agent_and_checks_baseline_code(tmp_path, monkeypatc
             candidate = agent_workspace / "src/mindev/tools/read.py"
             candidate.write_text(candidate.read_text(encoding="utf-8") + "\n# agent edit\n",
                                  encoding="utf-8")
+            usage_path = command[command.index("--usage-file") + 1]
+            with open(usage_path, "w", encoding="utf-8") as file:
+                json.dump({"source": "api_response_usage", "complete": True,
+                           "requests": 2, "prompt_tokens": 20,
+                           "completion_tokens": 3, "total_tokens": 23}, file)
         return {"exit_code": 0, "timed_out": False, "seconds": 0}
 
     monkeypatch.setattr(run_case, "execute", fake_execute)
@@ -255,3 +260,48 @@ def test_runner_uses_current_agent_and_checks_baseline_code(tmp_path, monkeypatc
     assert "# agent edit" not in (checkout / "src/mindev/tools/read.py").read_text(encoding="utf-8")
     assert result["checkout_head"] == run_case.BASELINE
     assert len(result["agent_source_sha256"]) == 64
+    assert result["api_usage"]["total_tokens"] == 23
+    assert result["context_estimate"]["source"] == "trace_character_count_divided_by_four"
+
+
+def test_compare_rejects_model_mismatch_and_separates_actual_from_estimate():
+    def record(case_id, outcome, repomap, model="fixed"):
+        return {"case": case_id, "grading": "automatic", "execution_status": "valid",
+                "task_outcome": outcome, "baseline": run_case.BASELINE,
+                "model": model, "api_type": "openai_compatible_chat_completions",
+                "api_endpoint_host": "example.invalid", "agent_source_sha256": "abc",
+                "prompt": run_case.CASES[case_id]["prompt"],
+                "configuration": {"repomap": repomap, "compact_threshold": 0,
+                                  "no_bash": True, "stream": False},
+                "api_usage": {"complete": True, "requests": 1, "prompt_tokens": 10,
+                              "completion_tokens": 2, "total_tokens": 12},
+                "context_estimate": {"peak_observed_context_tokens": 7,
+                                     "compaction_events": 0}}
+
+    a = {1: record(1, "failed", False), 3: record(3, "passed", False)}
+    b = {1: record(1, "passed", True), 3: record(3, "passed", True)}
+    report = compare.compare({"off": a, "on": b})
+    assert report["variants"]["off"]["functional"]["automatic"]["success_rate"] == 0.5
+    assert report["variants"]["on"]["actual_api_usage"]["total_tokens"] == 24
+    assert report["variants"]["on"]["estimated_context"]["mean_observed_peak_context_tokens"] == 7
+    assert report["paired_automatic_vs_first"]["on"]["improved"] == 1
+    b[1]["configuration"] = a[1]["configuration"]
+    with pytest.raises(ValueError, match="mixes"):
+        compare.compare({"off": a, "on": b})
+    b[1]["configuration"] = {"repomap": True, "compact_threshold": 0,
+                              "no_bash": True, "stream": False}
+    b[3]["api_usage"] = None
+    assert compare.compare({"off": a, "on": b})["variants"]["on"]["actual_api_usage"]["total_tokens"] is None
+    b[3]["api_usage"] = a[3]["api_usage"]
+    b[3]["execution_status"] = "invalid"
+    b[3]["task_outcome"] = None
+    assert compare.compare({"off": a, "on": b})["variants"]["on"]["actual_api_usage"]["total_tokens"] is None
+    b[3]["execution_status"] = "valid"
+    b[3]["task_outcome"] = "passed"
+    b[3]["model"] = "different"
+    with pytest.raises(ValueError, match="mismatch"):
+        compare.compare({"off": a, "on": b})
+    b[3]["model"] = "fixed"
+    a[3]["model"] = "different"
+    with pytest.raises(ValueError, match="Reference runs"):
+        compare.compare({"off": a, "on": b})

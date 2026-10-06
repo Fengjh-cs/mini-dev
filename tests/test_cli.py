@@ -1,3 +1,5 @@
+import json
+
 from mindev.cli import main
 
 
@@ -45,7 +47,8 @@ def test_run_without_command_tool(monkeypatch, capsys, tmp_path):
     monkeypatch.setattr(mindev.llm.openai, "OpenAIProvider", FakeProvider)
     monkeypatch.setattr(mindev.agent.loop, "AgentLoop", FakeLoop)
     assert main(["run", "--yes", "--no-repomap", "--no-bash",
-                 "--output-dir", str(workspace), "--trace", "trace.jsonl", "task"]) == 0
+                 "--output-dir", str(workspace), "--trace", "trace.jsonl",
+                 "--usage-file", "api_usage.json", "task"]) == 0
     assert "bash" not in seen["tools"]
     assert "read_file" in seen["tools"]
     assert "write_file" in seen["tools"]
@@ -56,6 +59,7 @@ def test_run_without_command_tool(monkeypatch, capsys, tmp_path):
     assert (workspace / "a.txt").read_text(encoding="utf-8") == "changed"
     assert not (workspace / ".env").exists()
     assert (workspace / "trace.jsonl").exists()
+    assert json.loads((workspace / "api_usage.json").read_text(encoding="utf-8"))["requests"] == 0
     assert not (tmp_path / "trace.jsonl").exists()
     assert "done" in capsys.readouterr().out
 

@@ -50,6 +50,8 @@ mindev run --no-bash "列出当前目录的文件"
 
 > `read_file`、`write_file`、`edit_file` 只接受工作副本内的路径；拒绝 `.env`、`.env.*`（允许 `.env.example`）、副本外路径和符号链接路径。`--mcp` 与 `--checkpoint` 在隔离运行中会被拒绝。相对的 `--trace`、`--session` 路径写入副本；显式绝对路径按用户指定位置写入。
 
+> `--usage-file api_usage.json` 可保存 API 响应实际返回的 token 用量（含探索子 Agent 与压缩摘要请求）；响应未提供完整 `usage` 时，总量标为未知。`--trace` 的 `tokens` 是字符数除以 4 的上下文估算值，不是 API 用量。固定模型的 RepoMap/压缩四组对比命令见 [validation/COMPARE.md](validation/COMPARE.md)。
+
 ### 编辑后自动验证
 
 先在本机准备包含项目测试依赖的镜像（构建上下文由 `.dockerignore` 限定，不包含 `.env`）：
