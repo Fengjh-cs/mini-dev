@@ -21,4 +21,4 @@ $env:MINIDEV_REQUIRE_DOCKER = '1'
 .\.venv\Scripts\python.exe -m pytest -q --tb=short -p no:cacheprovider
 ```
 
-此步未重新运行在线 14 题，历史的 14/14 单次采样和四条“反馈后撤回”trace 仍记录在 [文件范围反馈报告](p0-file-scope-report.md)，不能当作硬白名单版本的通过率。
+本文是写前拒绝实现与本地回归的记录。当时未重新运行在线 14 题；后续三轮在线结果（14/14、14/14、13/14）见 [硬白名单在线评测报告](p0-hard-whitelist-online-report.md)。历史的 14/14 单次采样和四条“反馈后撤回”trace 另见 [文件范围反馈报告](p0-file-scope-report.md)，不能混作硬白名单版本的数据。
