@@ -53,8 +53,38 @@ def _estimated_context(records: list[dict]) -> dict:
         "runs_with_observed_peak": len(peaks),
         "runs": len(records),
         "mean_observed_peak_context_tokens": sum(peaks) / len(peaks) if peaks else None,
-        "observed_compaction_events": sum(e.get("compaction_events", 0) for e in estimates),
+        "trace_compaction_attempts": sum(e.get("compaction_events", 0) for e in estimates),
     }
+
+
+def _paired_usage(variants: dict[str, dict[int, dict]], ids: set[int]) -> dict:
+    common = sorted(i for i in ids if all(
+        variants[label][i].get("execution_status") == "valid"
+        and isinstance(variants[label][i].get("api_usage"), dict)
+        and variants[label][i]["api_usage"].get("complete")
+        for label in variants))
+    labels = list(variants)
+    by_variant = {}
+    for label, records in variants.items():
+        usage = [records[i]["api_usage"] for i in common]
+        by_variant[label] = {
+            "requests": sum(u["requests"] for u in usage),
+            "compaction_summary_requests": sum(
+                u.get("by_kind", {}).get("compaction", {}).get("requests", 0)
+                for u in usage
+            ),
+            "prompt_tokens": sum(u["prompt_tokens"] for u in usage),
+            "completion_tokens": sum(u["completion_tokens"] for u in usage),
+            "total_tokens": sum(u["total_tokens"] for u in usage),
+        }
+    baseline = by_variant[labels[0]]["total_tokens"]
+    for label in labels:
+        total = by_variant[label]["total_tokens"]
+        by_variant[label]["total_tokens_change_vs_first_pct"] = (
+            (total - baseline) / baseline * 100 if baseline else None
+        )
+    return {"source": "api_response_usage", "case_ids": common,
+            "coverage": f"{len(common)}/{len(ids)}", "variants": by_variant}
 
 
 def compare(variants: dict[str, dict[int, dict]]) -> dict:
@@ -103,6 +133,12 @@ def compare(variants: dict[str, dict[int, dict]]) -> dict:
         "fixed": {field: reference[next(iter(ids))][field] for field in fixed_fields},
         "variants": {},
         "paired_automatic_vs_first": {},
+        "paired_actual_api_usage": {
+            "all_cases": _paired_usage(variants, ids),
+            "automatic_cases": _paired_usage(
+                variants, {i for i in ids if CASES[i]["grading"] == "automatic"}
+            ),
+        },
     }
     for label, records in variants.items():
         ordered = [records[i] for i in sorted(ids)]
@@ -135,6 +171,7 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--variant", nargs=2, action="append", metavar=("LABEL", "RESULT_DIR"),
                         required=True, help="Repeat for each configuration; first is reference")
+    parser.add_argument("--output", type=Path, help="Also save the comparison JSON here")
     args = parser.parse_args()
     labels = [label for label, _ in args.variant]
     if len(labels) != len(set(labels)):
@@ -143,7 +180,10 @@ def main() -> int:
         report = compare({label: load_variant(Path(root)) for label, root in args.variant})
     except (ValueError, KeyError, TypeError) as exc:
         parser.error(str(exc))
-    print(json.dumps(report, ensure_ascii=False, indent=2))
+    rendered = json.dumps(report, ensure_ascii=False, indent=2) + "\n"
+    if args.output:
+        args.output.write_text(rendered, encoding="utf-8")
+    print(rendered, end="")
     return 0
 
 

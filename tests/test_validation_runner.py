@@ -252,7 +252,9 @@ def test_runner_uses_current_agent_and_checks_baseline_code(tmp_path, monkeypatc
     assert calls[0][0][calls[0][0].index("--output-dir") + 1] == str(agent_workspace)
     assert calls[0][1] == checkout
     assert calls[0][2]["PYTHONPATH"].split(os.pathsep)[0] == str(run_case.SOURCE / "src")
+    assert calls[0][2]["PYTHONIOENCODING"] == "utf-8"
     assert calls[1][2]["PYTHONPATH"].split(os.pathsep)[0] == str(agent_workspace / "src")
+    assert calls[1][2]["PYTHONIOENCODING"] == "utf-8"
     assert calls[2][2]["PYTHONPATH"].split(os.pathsep)[0] == str(agent_workspace / "src")
     assert result["checkout"] == str(agent_workspace)
     assert result["source_checkout"] == str(checkout)
@@ -285,6 +287,8 @@ def test_compare_rejects_model_mismatch_and_separates_actual_from_estimate():
     assert report["variants"]["on"]["actual_api_usage"]["total_tokens"] == 24
     assert report["variants"]["on"]["estimated_context"]["mean_observed_peak_context_tokens"] == 7
     assert report["paired_automatic_vs_first"]["on"]["improved"] == 1
+    assert report["paired_actual_api_usage"]["automatic_cases"]["coverage"] == "2/2"
+    assert report["paired_actual_api_usage"]["automatic_cases"]["variants"]["on"]["total_tokens"] == 24
     b[1]["configuration"] = a[1]["configuration"]
     with pytest.raises(ValueError, match="mixes"):
         compare.compare({"off": a, "on": b})
@@ -292,6 +296,7 @@ def test_compare_rejects_model_mismatch_and_separates_actual_from_estimate():
                               "no_bash": True, "stream": False}
     b[3]["api_usage"] = None
     assert compare.compare({"off": a, "on": b})["variants"]["on"]["actual_api_usage"]["total_tokens"] is None
+    assert compare.compare({"off": a, "on": b})["paired_actual_api_usage"]["automatic_cases"]["coverage"] == "1/2"
     b[3]["api_usage"] = a[3]["api_usage"]
     b[3]["execution_status"] = "invalid"
     b[3]["task_outcome"] = None

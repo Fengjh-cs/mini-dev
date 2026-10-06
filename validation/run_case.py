@@ -356,6 +356,9 @@ def run_case(case_id: int, output_root: Path, model_override: str | None,
 
         agent_env = os.environ.copy()
         agent_env["PYTHONPATH"] = str(SOURCE / "src") + os.pathsep + agent_env.get("PYTHONPATH", "")
+        # Redirected stdout otherwise inherits the Windows GBK code page and
+        # can fail after a successful Agent turn when the model prints Unicode.
+        agent_env["PYTHONIOENCODING"] = "utf-8"
         trace = run_dir / "trace.jsonl"
         usage_file = run_dir / "api_usage.json"
         agent_workspace = run_dir / "agent-workspace"
@@ -396,6 +399,7 @@ def run_case(case_id: int, output_root: Path, model_override: str | None,
         result["test_command"] = ["<python>", *test_cmd[1:]]
         test_env = os.environ.copy()
         test_env["PYTHONPATH"] = str(agent_workspace / "src") + os.pathsep + test_env.get("PYTHONPATH", "")
+        test_env["PYTHONIOENCODING"] = "utf-8"
         test_env.pop("OPENAI_API_KEY", None)
         result["tests"] = execute(test_cmd, agent_workspace, test_env,
                                   run_dir / "tests.stdout.log", run_dir / "tests.stderr.log", test_timeout)

@@ -1,0 +1,359 @@
+{
+  "case_ids": [
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    9,
+    10,
+    11,
+    12,
+    13,
+    14,
+    15,
+    16,
+    17,
+    18,
+    19,
+    20
+  ],
+  "fixed": {
+    "baseline": "2671d40db5342f230f22f6cad66745639c97f7bc",
+    "model": "deepseek-chat",
+    "api_type": "openai_compatible_chat_completions",
+    "api_endpoint_host": "api.deepseek.com",
+    "agent_source_sha256": "5c168ce5ec6b5d7e8eac92969538733111404f60faf6e74270426c347d6c8173"
+  },
+  "variants": {
+    "map-off-compact-off": {
+      "configuration": {
+        "repomap": false,
+        "compact_threshold": 0,
+        "no_bash": true,
+        "stream": false
+      },
+      "functional": {
+        "catalog": {
+          "total": 20,
+          "automatic": 14,
+          "manual": 6
+        },
+        "automatic": {
+          "passed": 9,
+          "failed": 5,
+          "valid": 14,
+          "invalid_runs": 0,
+          "not_run": 0,
+          "success_rate": 0.6428571428571429
+        },
+        "manual": {
+          "passed_after_review": 0,
+          "failed_after_review": 0,
+          "failed_precheck": 1,
+          "needs_review": 5,
+          "invalid_runs": 0,
+          "not_run": 0
+        }
+      },
+      "actual_api_usage": {
+        "source": "api_response_usage",
+        "complete_runs": 20,
+        "runs": 20,
+        "requests": 323,
+        "prompt_tokens": 1948538,
+        "completion_tokens": 81559,
+        "total_tokens": 2030097
+      },
+      "estimated_context": {
+        "source": "trace_character_count_divided_by_four",
+        "runs_with_observed_peak": 20,
+        "runs": 20,
+        "mean_observed_peak_context_tokens": 4492.95,
+        "trace_compaction_attempts": 0
+      }
+    },
+    "map-on-compact-off": {
+      "configuration": {
+        "repomap": true,
+        "compact_threshold": 0,
+        "no_bash": true,
+        "stream": false
+      },
+      "functional": {
+        "catalog": {
+          "total": 20,
+          "automatic": 14,
+          "manual": 6
+        },
+        "automatic": {
+          "passed": 10,
+          "failed": 4,
+          "valid": 14,
+          "invalid_runs": 0,
+          "not_run": 0,
+          "success_rate": 0.7142857142857143
+        },
+        "manual": {
+          "passed_after_review": 0,
+          "failed_after_review": 0,
+          "failed_precheck": 1,
+          "needs_review": 5,
+          "invalid_runs": 0,
+          "not_run": 0
+        }
+      },
+      "actual_api_usage": {
+        "source": "api_response_usage",
+        "complete_runs": 20,
+        "runs": 20,
+        "requests": 234,
+        "prompt_tokens": 1839676,
+        "completion_tokens": 51486,
+        "total_tokens": 1891162
+      },
+      "estimated_context": {
+        "source": "trace_character_count_divided_by_four",
+        "runs_with_observed_peak": 20,
+        "runs": 20,
+        "mean_observed_peak_context_tokens": 6441.35,
+        "trace_compaction_attempts": 0
+      }
+    },
+    "map-off-compact-on": {
+      "configuration": {
+        "repomap": false,
+        "compact_threshold": 2000,
+        "no_bash": true,
+        "stream": false
+      },
+      "functional": {
+        "catalog": {
+          "total": 20,
+          "automatic": 14,
+          "manual": 6
+        },
+        "automatic": {
+          "passed": 7,
+          "failed": 7,
+          "valid": 14,
+          "invalid_runs": 0,
+          "not_run": 0,
+          "success_rate": 0.5
+        },
+        "manual": {
+          "passed_after_review": 0,
+          "failed_after_review": 0,
+          "failed_precheck": 1,
+          "needs_review": 4,
+          "invalid_runs": 1,
+          "not_run": 0
+        }
+      },
+      "actual_api_usage": {
+        "source": "api_response_usage",
+        "complete_runs": 19,
+        "runs": 20,
+        "requests": null,
+        "prompt_tokens": null,
+        "completion_tokens": null,
+        "total_tokens": null
+      },
+      "estimated_context": {
+        "source": "trace_character_count_divided_by_four",
+        "runs_with_observed_peak": 20,
+        "runs": 20,
+        "mean_observed_peak_context_tokens": 3655.9,
+        "trace_compaction_attempts": 142
+      }
+    },
+    "map-on-compact-on": {
+      "configuration": {
+        "repomap": true,
+        "compact_threshold": 2000,
+        "no_bash": true,
+        "stream": false
+      },
+      "functional": {
+        "catalog": {
+          "total": 20,
+          "automatic": 14,
+          "manual": 6
+        },
+        "automatic": {
+          "passed": 11,
+          "failed": 3,
+          "valid": 14,
+          "invalid_runs": 0,
+          "not_run": 0,
+          "success_rate": 0.7857142857142857
+        },
+        "manual": {
+          "passed_after_review": 0,
+          "failed_after_review": 0,
+          "failed_precheck": 0,
+          "needs_review": 6,
+          "invalid_runs": 0,
+          "not_run": 0
+        }
+      },
+      "actual_api_usage": {
+        "source": "api_response_usage",
+        "complete_runs": 20,
+        "runs": 20,
+        "requests": 345,
+        "prompt_tokens": 1692949,
+        "completion_tokens": 97178,
+        "total_tokens": 1790127
+      },
+      "estimated_context": {
+        "source": "trace_character_count_divided_by_four",
+        "runs_with_observed_peak": 20,
+        "runs": 20,
+        "mean_observed_peak_context_tokens": 5400.4,
+        "trace_compaction_attempts": 130
+      }
+    }
+  },
+  "paired_automatic_vs_first": {
+    "map-on-compact-off": {
+      "paired_valid_cases": 14,
+      "improved": 4,
+      "regressed": 3,
+      "both_passed": 6,
+      "both_failed": 1
+    },
+    "map-off-compact-on": {
+      "paired_valid_cases": 14,
+      "improved": 2,
+      "regressed": 4,
+      "both_passed": 5,
+      "both_failed": 3
+    },
+    "map-on-compact-on": {
+      "paired_valid_cases": 14,
+      "improved": 4,
+      "regressed": 2,
+      "both_passed": 7,
+      "both_failed": 1
+    }
+  },
+  "paired_actual_api_usage": {
+    "all_cases": {
+      "source": "api_response_usage",
+      "case_ids": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11,
+        12,
+        13,
+        14,
+        15,
+        17,
+        18,
+        19,
+        20
+      ],
+      "coverage": "19/20",
+      "variants": {
+        "map-off-compact-off": {
+          "requests": 309,
+          "compaction_summary_requests": 0,
+          "prompt_tokens": 1847952,
+          "completion_tokens": 77992,
+          "total_tokens": 1925944,
+          "total_tokens_change_vs_first_pct": 0.0
+        },
+        "map-on-compact-off": {
+          "requests": 222,
+          "compaction_summary_requests": 0,
+          "prompt_tokens": 1743430,
+          "completion_tokens": 48712,
+          "total_tokens": 1792142,
+          "total_tokens_change_vs_first_pct": -6.947346340288191
+        },
+        "map-off-compact-on": {
+          "requests": 575,
+          "compaction_summary_requests": 111,
+          "prompt_tokens": 2246981,
+          "completion_tokens": 155986,
+          "total_tokens": 2402967,
+          "total_tokens_change_vs_first_pct": 24.76826948239409
+        },
+        "map-on-compact-on": {
+          "requests": 320,
+          "compaction_summary_requests": 84,
+          "prompt_tokens": 1560157,
+          "completion_tokens": 90926,
+          "total_tokens": 1651083,
+          "total_tokens_change_vs_first_pct": -14.271494913663119
+        }
+      }
+    },
+    "automatic_cases": {
+      "source": "api_response_usage",
+      "case_ids": [
+        1,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11,
+        12,
+        13,
+        14,
+        15
+      ],
+      "coverage": "14/14",
+      "variants": {
+        "map-off-compact-off": {
+          "requests": 197,
+          "compaction_summary_requests": 0,
+          "prompt_tokens": 836090,
+          "completion_tokens": 43985,
+          "total_tokens": 880075,
+          "total_tokens_change_vs_first_pct": 0.0
+        },
+        "map-on-compact-off": {
+          "requests": 111,
+          "compaction_summary_requests": 0,
+          "prompt_tokens": 501680,
+          "completion_tokens": 19382,
+          "total_tokens": 521062,
+          "total_tokens_change_vs_first_pct": -40.793455103258246
+        },
+        "map-off-compact-on": {
+          "requests": 334,
+          "compaction_summary_requests": 58,
+          "prompt_tokens": 1066544,
+          "completion_tokens": 83263,
+          "total_tokens": 1149807,
+          "total_tokens_change_vs_first_pct": 30.648751526858508
+        },
+        "map-on-compact-on": {
+          "requests": 130,
+          "compaction_summary_requests": 32,
+          "prompt_tokens": 485809,
+          "completion_tokens": 29413,
+          "total_tokens": 515222,
+          "total_tokens_change_vs_first_pct": -41.457034911797294
+        }
+      }
+    }
+  }
+}
