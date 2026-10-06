@@ -57,12 +57,11 @@ def main() -> int:
         Turn("", [ToolCall("c3", "bash", {"command": "echo hello"})]),
         Turn("Done: wrote greeting.txt, edited it, and ran a command.", []),
     ]
-    tools = ToolRegistry([ReadTool(), WriteFileTool(), EditFileTool(), BashTool()])
-
     original = os.getcwd()
     with tempfile.TemporaryDirectory() as d:
         os.chdir(d)
         try:
+            tools = ToolRegistry([ReadTool(), WriteFileTool(), EditFileTool(), BashTool()])
             result = AgentLoop(ScriptedProvider(turns), tools, observer=_observer).run(
                 "create and edit a greeting file"
             )

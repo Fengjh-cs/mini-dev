@@ -6,6 +6,9 @@ semantics Claude Code's Edit tool uses). Both snapshot the file first so the
 change can be rolled back.
 """
 
+import os
+
+from .access import AccessDenied, WorkspacePathPolicy
 from .base import Tool
 from .snapshot import SnapshotStore
 
@@ -14,11 +17,16 @@ MAX_EDIT_CHARS = 100_000
 
 class WriteFileTool(Tool):
     name = "write_file"
-    description = "Create a new file, or overwrite an existing file, with the given content."
+    description = (
+        "Create or overwrite a file inside the workspace. "
+        "Environment files and symbolic links are blocked."
+    )
     risk = "write"
 
-    def __init__(self, snapshots: SnapshotStore | None = None) -> None:
+    def __init__(self, snapshots: SnapshotStore | None = None,
+                 access: WorkspacePathPolicy | None = None) -> None:
         self._snapshots = snapshots
+        self._access = access or WorkspacePathPolicy(os.getcwd())
 
     def parameters(self) -> dict:
         return {
@@ -35,10 +43,14 @@ class WriteFileTool(Tool):
         content = arguments.get("content", "")
         if not path:
             return "Error: path is required."
-        if self._snapshots:
-            self._snapshots.snapshot(path)
         try:
-            with open(path, "w", encoding="utf-8") as f:
+            safe_path = self._access.resolve(path)
+        except AccessDenied as exc:
+            return f"Error: {exc}"
+        if self._snapshots:
+            self._snapshots.snapshot(str(safe_path))
+        try:
+            with open(safe_path, "w", encoding="utf-8") as f:
                 f.write(content)
         except OSError as exc:
             return f"Error: could not write {path}: {exc}"
@@ -48,13 +60,16 @@ class WriteFileTool(Tool):
 class EditFileTool(Tool):
     name = "edit_file"
     description = (
-        "Replace the unique occurrence of old_string in a file with new_string. "
+        "Replace the unique occurrence of old_string in a workspace file. "
+        "Environment files and symbolic links are blocked. "
         "old_string must appear exactly once, otherwise the edit is rejected."
     )
     risk = "write"
 
-    def __init__(self, snapshots: SnapshotStore | None = None) -> None:
+    def __init__(self, snapshots: SnapshotStore | None = None,
+                 access: WorkspacePathPolicy | None = None) -> None:
         self._snapshots = snapshots
+        self._access = access or WorkspacePathPolicy(os.getcwd())
 
     def parameters(self) -> dict:
         return {
@@ -74,8 +89,11 @@ class EditFileTool(Tool):
         if not old:
             return "Error: old_string must not be empty."
         try:
-            with open(path, encoding="utf-8") as f:
+            safe_path = self._access.resolve(path)
+            with open(safe_path, encoding="utf-8") as f:
                 original = f.read()
+        except AccessDenied as exc:
+            return f"Error: {exc}"
         except FileNotFoundError:
             return f"Error: file not found: {path}"
         except OSError as exc:
@@ -90,10 +108,10 @@ class EditFileTool(Tool):
             return f"Error: old_string is not unique (found {count} occurrences)."
 
         if self._snapshots:
-            self._snapshots.snapshot(path)
+            self._snapshots.snapshot(str(safe_path))
         updated = original.replace(old, new, 1)
         try:
-            with open(path, "w", encoding="utf-8") as f:
+            with open(safe_path, "w", encoding="utf-8") as f:
                 f.write(updated)
         except OSError as exc:
             return f"Error: could not write {path}: {exc}"

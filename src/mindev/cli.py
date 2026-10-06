@@ -40,6 +40,7 @@ def _cmd_run(args: argparse.Namespace) -> int:
     from .llm.openai import OpenAIProvider
     from .sandbox.docker import DockerSandbox
     from .sandbox.local import LocalSandbox
+    from .tools.access import WorkspacePathPolicy
     from .tools.bash import BashTool
     from .tools.edit import EditFileTool, WriteFileTool
     from .tools.explore import ExploreTool
@@ -66,17 +67,21 @@ def _cmd_run(args: argparse.Namespace) -> int:
         session_store.load(provider)
 
     snapshots = SnapshotStore()
-    registry_tools = [ReadTool()]
+    file_access = WorkspacePathPolicy(os.getcwd())
+    registry_tools = [ReadTool(file_access)]
     if not args.plan:
         sandbox = DockerSandbox() if args.sandbox == "docker" else LocalSandbox()
-        registry_tools += [WriteFileTool(snapshots), EditFileTool(snapshots)]
+        registry_tools += [
+            WriteFileTool(snapshots, file_access),
+            EditFileTool(snapshots, file_access),
+        ]
         if not args.no_bash:
             registry_tools.append(BashTool(sandbox))
         registry_tools.append(
             ExploreTool(
                 ExploreSubagent(
                     lambda: OpenAIProvider(model=args.model, system=EXPLORE_INSTRUCTIONS),
-                    ToolRegistry([ReadTool()]),
+                    ToolRegistry([ReadTool(file_access)]),
                 )
             )
         )

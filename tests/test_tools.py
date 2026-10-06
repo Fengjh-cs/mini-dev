@@ -1,3 +1,4 @@
+from mindev.tools.access import WorkspacePathPolicy
 from mindev.tools.bash import BashTool
 from mindev.tools.read import ReadTool
 from mindev.tools.registry import ToolRegistry
@@ -6,14 +7,14 @@ from mindev.tools.registry import ToolRegistry
 def test_read_tool_returns_numbered_lines(tmp_path):
     f = tmp_path / "a.txt"
     f.write_text("line1\nline2\n")
-    out = ReadTool().run({"path": str(f)})
+    out = ReadTool(WorkspacePathPolicy(tmp_path)).run({"path": str(f)})
     assert "line1" in out and "line2" in out
     assert out.startswith("   1 ")
 
 
-def test_read_tool_missing_file():
-    out = ReadTool().run({"path": "/no/such/file.txt"})
-    assert out.startswith("Error")
+def test_read_tool_missing_file(tmp_path):
+    out = ReadTool(WorkspacePathPolicy(tmp_path)).run({"path": str(tmp_path / "missing.txt")})
+    assert out.startswith("Error: file not found")
 
 
 def test_bash_tool_runs_echo():

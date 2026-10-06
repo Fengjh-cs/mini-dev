@@ -1,5 +1,8 @@
 """Read a file and return its contents with line numbers."""
 
+import os
+
+from .access import AccessDenied, WorkspacePathPolicy
 from .base import Tool
 
 MAX_OUTPUT_CHARS = 20_000
@@ -8,9 +11,12 @@ MAX_OUTPUT_CHARS = 20_000
 class ReadTool(Tool):
     name = "read_file"
     description = (
-        "Read a file and return its contents with line numbers. "
-        "Use this to inspect source code or any text file."
+        "Read a text file inside the workspace and return numbered lines. "
+        "Environment files and symbolic links are blocked."
     )
+
+    def __init__(self, access: WorkspacePathPolicy | None = None) -> None:
+        self._access = access or WorkspacePathPolicy(os.getcwd())
 
     def parameters(self) -> dict:
         return {
@@ -24,8 +30,11 @@ class ReadTool(Tool):
     def run(self, arguments: dict) -> str:
         path = arguments.get("path", "")
         try:
-            with open(path, "r", encoding="utf-8", errors="replace") as f:
+            safe_path = self._access.resolve(path)
+            with open(safe_path, "r", encoding="utf-8", errors="replace") as f:
                 lines = f.readlines()
+        except AccessDenied as exc:
+            return f"Error: {exc}"
         except FileNotFoundError:
             return f"Error: file not found: {path}"
         except IsADirectoryError:

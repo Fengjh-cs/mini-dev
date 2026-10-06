@@ -1,5 +1,6 @@
 from mindev.agent.loop import AgentLoop
 from mindev.llm.base import LLMProvider, ToolCall, Turn
+from mindev.tools.access import WorkspacePathPolicy
 from mindev.tools.edit import WriteFileTool
 from mindev.tools.read import ReadTool
 from mindev.tools.registry import ToolRegistry
@@ -71,7 +72,7 @@ def test_loop_feeds_validation_error_back_for_self_correction(tmp_path):
             self.results.append((call_id, output))
 
     provider = Scripted()
-    loop = AgentLoop(provider, ToolRegistry([WriteFileTool()]))
+    loop = AgentLoop(provider, ToolRegistry([WriteFileTool(access=WorkspacePathPolicy(tmp_path))]))
     loop.run("create out.txt")
 
     assert "invalid arguments" in provider.results[0][1]

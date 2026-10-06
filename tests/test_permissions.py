@@ -1,6 +1,7 @@
 from mindev.agent.loop import AgentLoop
 from mindev.agent.permissions import Mode, PermissionPolicy
 from mindev.llm.base import LLMProvider, ToolCall, Turn
+from mindev.tools.access import WorkspacePathPolicy
 from mindev.tools.edit import WriteFileTool
 from mindev.tools.registry import ToolRegistry
 
@@ -55,7 +56,7 @@ def test_loop_readonly_policy_denies_registered_write(tmp_path):
     provider = ScriptedProvider(turns)
     loop = AgentLoop(
         provider,
-        ToolRegistry([WriteFileTool()]),
+        ToolRegistry([WriteFileTool(access=WorkspacePathPolicy(tmp_path))]),
         policy=PermissionPolicy(mode=Mode.READONLY),
     )
     loop.run("plan")
@@ -72,7 +73,7 @@ def test_loop_approver_can_deny(tmp_path):
     ]
     provider = ScriptedProvider(turns)
     policy = PermissionPolicy(mode=Mode.READWRITE, approver=lambda name, args: False)
-    loop = AgentLoop(provider, ToolRegistry([WriteFileTool()]), policy=policy)
+    loop = AgentLoop(provider, ToolRegistry([WriteFileTool(access=WorkspacePathPolicy(tmp_path))]), policy=policy)
     loop.run("do it")
     assert "DENIED" in provider.results[0][1]
     assert f.read_text() == "original"
@@ -87,6 +88,6 @@ def test_loop_approver_can_allow(tmp_path):
     ]
     provider = ScriptedProvider(turns)
     policy = PermissionPolicy(mode=Mode.READWRITE, approver=lambda name, args: True)
-    loop = AgentLoop(provider, ToolRegistry([WriteFileTool()]), policy=policy)
+    loop = AgentLoop(provider, ToolRegistry([WriteFileTool(access=WorkspacePathPolicy(tmp_path))]), policy=policy)
     loop.run("do it")
     assert f.read_text() == "changed"

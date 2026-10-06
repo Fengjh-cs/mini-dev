@@ -1,5 +1,6 @@
 from mindev.agent.loop import AgentLoop
 from mindev.llm.base import LLMProvider, ToolCall, Turn
+from mindev.tools.access import WorkspacePathPolicy
 from mindev.tools.read import ReadTool
 from mindev.tools.registry import ToolRegistry
 
@@ -34,7 +35,7 @@ def test_loop_runs_tool_and_returns_final_text(tmp_path):
         Turn(text="The file says hi.", tool_calls=[]),
     ]
     provider = ScriptedProvider(turns)
-    loop = AgentLoop(provider, ToolRegistry([ReadTool()]))
+    loop = AgentLoop(provider, ToolRegistry([ReadTool(WorkspacePathPolicy(tmp_path))]))
 
     result = loop.run("read that file")
 
