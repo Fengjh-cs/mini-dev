@@ -2,11 +2,12 @@
 
 import os
 import subprocess
+from unittest.mock import patch
 
 import pytest
 
 from mindev.tools.access import WorkspacePathPolicy
-from mindev.tools.edit import EditFileTool, WriteFileTool
+from mindev.tools.edit import DeleteFileTool, EditFileTool, WriteFileTool
 from mindev.tools.read import ReadTool
 from mindev.tools.snapshot import SnapshotStore
 
@@ -20,7 +21,8 @@ def _assert_denied_by_all_file_tools(path, access):
     edit_result = EditFileTool(snapshots, access).run(
         {"path": str(path), "old_string": "sentinel", "new_string": "overwritten"}
     )
-    for result in (read_result, write_result, edit_result):
+    delete_result = DeleteFileTool(snapshots, access).run({"path": str(path)})
+    for result in (read_result, write_result, edit_result, delete_result):
         assert result.startswith("Error: access denied"), result
         assert "sentinel" not in result
     assert not snapshots._states
@@ -119,3 +121,62 @@ def test_ordinary_files_and_env_example_remain_accessible(tmp_path):
         {"path": "notes.txt", "old_string": "before", "new_string": "after"}
     ).startswith("Edited")
     assert (workspace / "notes.txt").read_text(encoding="utf-8") == "after"
+    assert DeleteFileTool(access=access).run({"path": "notes.txt"}).startswith("Deleted")
+    assert not (workspace / "notes.txt").exists()
+
+
+def test_allowed_write_set_rejects_every_mutation_before_open_or_snapshot(tmp_path):
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    allowed = workspace / "allowed.py"
+    restricted = workspace / "tests" / "test_tools.py"
+    restricted.parent.mkdir()
+    allowed.write_text("before", encoding="utf-8")
+    restricted.write_text("sentinel", encoding="utf-8")
+    access = WorkspacePathPolicy(workspace, allowed_writes=["allowed.py"])
+    snapshots = SnapshotStore()
+
+    # The write list must not hide unrelated files from the read tool.
+    assert "sentinel" in ReadTool(access).run({"path": "tests/test_tools.py"})
+    with patch("builtins.open") as opened:
+        results = [
+            WriteFileTool(snapshots, access).run(
+                {"path": "tests/test_tools.py", "content": "changed"}),
+            EditFileTool(snapshots, access).run(
+                {"path": "tests/test_tools.py", "old_string": "sentinel", "new_string": "changed"}),
+            DeleteFileTool(snapshots, access).run({"path": "tests/test_tools.py"}),
+            WriteFileTool(snapshots, access).run(
+                {"path": "scratch.py", "content": "new"}),
+        ]
+        opened.assert_not_called()
+
+    assert all("outside allowed write set" in result for result in results)
+    assert restricted.read_text(encoding="utf-8") == "sentinel"
+    assert not (workspace / "scratch.py").exists()
+    assert snapshots._states == {}
+
+
+def test_allowed_write_set_accepts_only_named_files_and_canonical_aliases(tmp_path):
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    access = WorkspacePathPolicy(workspace, allowed_writes=["allowed.py", "new.py"])
+    write = WriteFileTool(access=access)
+
+    assert write.run({"path": "./allowed.py", "content": "before"}).startswith("Wrote")
+    assert EditFileTool(access=access).run({
+        "path": str(workspace / "allowed.py"),
+        "old_string": "before", "new_string": "after",
+    }).startswith("Edited")
+    assert write.run({"path": "new.py", "content": "new"}).startswith("Wrote")
+    assert DeleteFileTool(access=access).run({"path": "new.py"}).startswith("Deleted")
+    assert (workspace / "allowed.py").read_text(encoding="utf-8") == "after"
+    assert not (workspace / "new.py").exists()
+
+
+@pytest.mark.parametrize("allowed", [
+    [], [""], ["../outside.py"], [".env"], ["nested"],
+])
+def test_invalid_allowed_write_set_is_rejected_at_construction(tmp_path, allowed):
+    (tmp_path / "nested").mkdir()
+    with pytest.raises(ValueError):
+        WorkspacePathPolicy(tmp_path, allowed_writes=allowed)

@@ -8,13 +8,14 @@ import pytest
 
 from mindev.agent.loop import AgentLoop
 from mindev.agent.trace import TraceRecorder
-from mindev.agent.verify import EditVerifier
+from mindev.agent.verify import EditVerifier, FileScopeCheck
 from mindev.llm.base import LLMProvider, ToolCall, Turn
 from mindev.sandbox.docker import CommandResult, DockerSandbox
 from mindev.sandbox.workspace import create_workspace
 from mindev.tools.access import WorkspacePathPolicy
-from mindev.tools.edit import EditFileTool, WriteFileTool
+from mindev.tools.edit import DeleteFileTool, EditFileTool, WriteFileTool
 from mindev.tools.registry import ToolRegistry
+from mindev.tools.snapshot import SnapshotStore
 
 
 class ScriptedProvider(LLMProvider):
@@ -42,6 +43,38 @@ class FakeSandbox:
         return self.check()
 
 
+def test_hard_write_scope_blocks_extra_edit_and_returns_error_to_agent(tmp_path):
+    (tmp_path / "allowed.py").write_text("old", encoding="utf-8")
+    tests = tmp_path / "tests"
+    tests.mkdir()
+    (tests / "test_tools.py").write_text("original", encoding="utf-8")
+    access = WorkspacePathPolicy(tmp_path, allowed_writes=["allowed.py"])
+    provider = ScriptedProvider([
+        Turn("", [ToolCall("extra", "edit_file", {
+            "path": "tests/test_tools.py", "old_string": "original", "new_string": "extra",
+        })]),
+        Turn("", [ToolCall("source", "edit_file", {
+            "path": "allowed.py", "old_string": "old", "new_string": "new",
+        })]),
+        Turn("done", []),
+    ])
+    recorder = TraceRecorder()
+    loop = AgentLoop(
+        provider, ToolRegistry([EditFileTool(access=access)]),
+        verifier=EditVerifier([], scope=FileScopeCheck(tmp_path, ["allowed.py"])),
+        recorder=recorder,
+    )
+
+    assert loop.run("edit only allowed.py") == "done"
+    assert (tests / "test_tools.py").read_text(encoding="utf-8") == "original"
+    assert (tmp_path / "allowed.py").read_text(encoding="utf-8") == "new"
+    assert "outside allowed write set" in provider.results[0][1]
+    assert "[verify PASS] file scope" in provider.results[1][1]
+    assert [event.kind for event in recorder.events] == [
+        "tool_call", "tool_call", "verify",
+    ]
+
+
 def test_verifier_runs_all_selected_commands_and_reports_status():
     outcomes = iter([CommandResult(1, "first failed"), CommandResult(0, "second passed")])
     sandbox = FakeSandbox(lambda: next(outcomes))
@@ -52,6 +85,105 @@ def test_verifier_runs_all_selected_commands_and_reports_status():
     assert "[verify FAIL] check one (exit=1)" in result.output
     assert "[verify PASS] check two (exit=0)" in result.output
     assert sandbox.calls == [("check one", 120), ("check two", 120)]
+
+
+def test_scope_failure_is_fed_back_and_new_file_can_be_deleted(tmp_path):
+    (tmp_path / "allowed.py").write_text("old", encoding="utf-8")
+    scope = FileScopeCheck(tmp_path, ["allowed.py"])
+    provider = ScriptedProvider([
+        Turn("", [
+            ToolCall("edit", "edit_file", {
+                "path": "allowed.py", "old_string": "old", "new_string": "new",
+            }),
+            ToolCall("scratch", "write_file", {
+                "path": "_verify.py", "content": "temporary",
+            }),
+        ]),
+        Turn("", [ToolCall("remove", "delete_file", {"path": "_verify.py"})]),
+        Turn("done", []),
+    ])
+    access = WorkspacePathPolicy(tmp_path)
+    snapshots = SnapshotStore()
+    loop = AgentLoop(
+        provider,
+        ToolRegistry([
+            WriteFileTool(snapshots, access), EditFileTool(snapshots, access),
+            DeleteFileTool(snapshots, access),
+        ]),
+        verifier=EditVerifier([], scope=scope),
+    )
+
+    assert loop.run("edit only allowed.py") == "done"
+    assert (tmp_path / "allowed.py").read_text(encoding="utf-8") == "new"
+    assert not (tmp_path / "_verify.py").exists()
+    assert [call_id for call_id, _ in provider.results] == ["edit", "scratch", "remove"]
+    assert "[verify" not in provider.results[0][1]
+    assert "[verify FAIL] file scope: unexpected changes: _verify.py" in provider.results[1][1]
+    assert "[verify PASS] file scope" in provider.results[2][1]
+
+
+def test_scope_failure_for_changed_test_file_clears_after_revert(tmp_path):
+    (tmp_path / "allowed.py").write_text("old", encoding="utf-8")
+    tests = tmp_path / "tests"
+    tests.mkdir()
+    (tests / "test_tools.py").write_text("original", encoding="utf-8")
+    scope = FileScopeCheck(tmp_path, ["allowed.py"])
+    provider = ScriptedProvider([
+        Turn("", [
+            ToolCall("source", "edit_file", {
+                "path": "allowed.py", "old_string": "old", "new_string": "new",
+            }),
+            ToolCall("test", "edit_file", {
+                "path": "tests/test_tools.py", "old_string": "original", "new_string": "extra",
+            }),
+        ]),
+        Turn("", [ToolCall("revert", "edit_file", {
+            "path": "tests/test_tools.py", "old_string": "extra", "new_string": "original",
+        })]),
+        Turn("done", []),
+    ])
+    loop = AgentLoop(
+        provider, ToolRegistry([EditFileTool(access=WorkspacePathPolicy(tmp_path))]),
+        verifier=EditVerifier([], scope=scope),
+    )
+
+    assert loop.run("edit only allowed.py") == "done"
+    assert (tmp_path / "allowed.py").read_text(encoding="utf-8") == "new"
+    assert (tests / "test_tools.py").read_text(encoding="utf-8") == "original"
+    assert "tests/test_tools.py" in provider.results[1][1]
+    assert "[verify PASS] file scope" in provider.results[2][1]
+
+
+def test_scope_detects_deleted_or_changed_files_and_ignores_agent_artifacts(tmp_path):
+    allowed = tmp_path / "allowed.py"
+    other = tmp_path / "other.py"
+    artifact = tmp_path / "trace.jsonl"
+    allowed.write_text("old", encoding="utf-8")
+    other.write_text("stable", encoding="utf-8")
+    scope = FileScopeCheck(tmp_path, ["allowed.py"], ignored_files=(str(artifact),))
+
+    allowed.write_text("new", encoding="utf-8")
+    artifact.write_text("trace", encoding="utf-8")
+    assert scope.unexpected_changes() == []
+    other.write_text("changed", encoding="utf-8")
+    assert scope.unexpected_changes() == ["other.py"]
+    other.unlink()
+    assert scope.unexpected_changes() == ["other.py"]
+
+
+def test_scope_catches_files_created_by_verification_command(tmp_path):
+    (tmp_path / "allowed.py").write_text("old", encoding="utf-8")
+    scope = FileScopeCheck(tmp_path, ["allowed.py"])
+
+    def command_with_side_effect():
+        (tmp_path / "extra.py").write_text("new", encoding="utf-8")
+        return CommandResult(0, "check passed")
+
+    sandbox = FakeSandbox(command_with_side_effect)
+    result = EditVerifier(["check"], sandbox, scope=scope).run()
+    assert not result.passed
+    assert "[verify PASS] check" in result.output
+    assert "[verify FAIL] file scope: unexpected changes: extra.py" in result.output
 
 
 def test_failed_verification_is_fed_back_and_next_edit_repairs_it(tmp_path):

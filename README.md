@@ -65,6 +65,10 @@ mindev run --no-bash "列出当前目录的文件"
 
 这是单次采样，不能据此宣称稳定收益。另有 6 道人工题，语义 verdict 尚待真正人工审阅；其中一组第 16 题超时，记录为无效运行。完整口径、配对用量、上下文**估算值**、bad case 和原始证据见 [4.2 评测报告](validation/results/phase42-report.md)。
 
+上表是加入运行中文件范围验证之前的历史结果；后续启用 `--allowed-file` 的运行需单独记录，不与上表混算。
+
+加入文件范围反馈后，在同模型、同基线、同关闭 RepoMap/压缩的 14 道自动题上单次复测为 **14/14**，其中 4 题出现越界编辑并在反馈后撤回。此结果仅是一轮采样，过程和证据见 [P0 文件范围报告](validation/results/p0-file-scope-report.md)。
+
 ### 编辑后自动验证
 
 先在本机准备包含项目测试依赖的镜像（构建上下文由 `.dockerignore` 限定，不包含 `.env`）：
@@ -73,13 +77,21 @@ mindev run --no-bash "列出当前目录的文件"
 docker build -f Dockerfile.verify -t mindev-verify:local .
 ```
 
-然后指定要运行的测试；`--verify` 可以重复。每批成功的 `write_file` / `edit_file` 调用之后，测试会在挂载同一工作副本的 Docker 容器里运行一次。失败输出附在编辑工具结果中交回 Agent，供下一轮修复；最后仍失败会明确标记为未通过验证。
+然后指定要运行的测试；`--verify` 可以重复。每批成功的 `write_file` / `edit_file` / `delete_file` 调用之后，测试会在挂载同一工作副本的 Docker 容器里运行一次。失败输出附在工具结果中交回 Agent，供下一轮修复；最后仍失败会明确标记为未通过验证。
 
 ```bash
 mindev run --no-bash --docker-image mindev-verify:local --verify "python -m pytest tests/test_tools.py -q" "修改 read_file 并通过指定测试"
 ```
 
 `--no-bash` 只移除模型可调用的 bash 工具，自动验证仍需要 Docker。镜像需预先构建；运行时容器禁用网络，测试只修改隔离副本。
+
+限制任务可改的文件时，重复传入 `--allowed-file`。`write_file`、`edit_file`、`delete_file` 在打开文件或创建快照前检查白名单；名单外写入会直接返回拒绝错误，`read_file` 仍可读取工作区内的非敏感文件。每批成功编辑后还会比较隔离副本与任务开始时的状态，把其他途径造成的越界改动作为验证失败交回 Agent。此模式要求 `--no-bash`；仅启用文件范围限制时无需 Docker。`--verify` 指定的命令在 Docker 中运行，其写入由批次后检查发现，不受文件工具的写前白名单约束。
+
+写前拒绝的负向测试、适用边界和回归结果见 [P0 文件硬白名单报告](validation/results/p0-hard-whitelist-report.md)。
+
+```bash
+mindev run --no-bash --allowed-file src/mindev/tools/registry.py "只修改 registry.py，拒绝重复工具名"
+```
 
 ## Demo
 

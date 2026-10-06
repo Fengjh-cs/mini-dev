@@ -93,8 +93,9 @@ class AgentLoop:
                         )
                     )
                 results.append((call.id, output))
-                if (self._verifier is not None and call.name in {"write_file", "edit_file"}
-                        and output.startswith(("Wrote ", "Edited "))):
+                if (self._verifier is not None and call.name in
+                        {"write_file", "edit_file", "delete_file"}
+                        and output.startswith(("Wrote ", "Edited ", "Deleted "))):
                     last_edit_index = len(results) - 1
             if last_edit_index is not None:
                 start = time.monotonic()

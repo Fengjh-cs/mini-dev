@@ -369,6 +369,8 @@ def run_case(case_id: int, output_root: Path, model_override: str | None,
                      "--compact-threshold", str(compact_threshold)]
         if not repomap:
             agent_cmd.append("--no-repomap")
+        for allowed_file in case["allowed"]:
+            agent_cmd.extend(["--allowed-file", allowed_file])
         agent_cmd.append(case["prompt"])
         result["agent_command"] = ["<python>", *agent_cmd[1:]]
         result["agent"] = execute(agent_cmd, checkout, agent_env,

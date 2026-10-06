@@ -44,6 +44,13 @@ def _cmd_run(args: argparse.Namespace) -> int:
     if args.plan and args.verify:
         print("Error: --verify is unavailable in read-only plan mode.", file=sys.stderr)
         return 2
+    if args.plan and args.allowed_file:
+        print("Error: --allowed-file is unavailable in read-only plan mode.", file=sys.stderr)
+        return 2
+    if args.allowed_file and not args.no_bash:
+        print("Error: --allowed-file requires --no-bash to restrict model-facing writes.",
+              file=sys.stderr)
+        return 2
     if any(not command.strip() for command in args.verify):
         print("Error: --verify command must not be empty.", file=sys.stderr)
         return 2
@@ -61,7 +68,7 @@ def _cmd_run(args: argparse.Namespace) -> int:
     from .agent.loop import AgentLoop
     from .agent.permissions import Mode, PermissionPolicy
     from .agent.subagent import EXPLORE_INSTRUCTIONS, ExploreSubagent
-    from .agent.verify import EditVerifier
+    from .agent.verify import EditVerifier, FileScopeCheck
     from .context.prompter import build_system_prompt
     from .context.repomap import RepoMap
     from .llm.openai import OpenAIProvider
@@ -70,7 +77,7 @@ def _cmd_run(args: argparse.Namespace) -> int:
     from .sandbox.workspace import create_workspace
     from .tools.access import AccessDenied, WorkspacePathPolicy
     from .tools.bash import BashTool
-    from .tools.edit import EditFileTool, WriteFileTool
+    from .tools.edit import DeleteFileTool, EditFileTool, WriteFileTool
     from .tools.explore import ExploreTool
     from .tools.read import ReadTool
     from .tools.registry import ToolRegistry
@@ -83,7 +90,13 @@ def _cmd_run(args: argparse.Namespace) -> int:
         print(f"Error: could not create isolated workspace: {exc}", file=sys.stderr)
         return 2
 
-    file_access = WorkspacePathPolicy(workspace)
+    try:
+        file_access = WorkspacePathPolicy(
+            workspace, allowed_writes=args.allowed_file if args.allowed_file else None,
+        )
+    except (AccessDenied, ValueError, OSError) as exc:
+        print(f"Error: invalid --allowed-file: {exc}", file=sys.stderr)
+        return 2
 
     def artifact_path(raw: str) -> str:
         path = Path(raw)
@@ -103,12 +116,11 @@ def _cmd_run(args: argparse.Namespace) -> int:
     if args.stream:
         on_token = lambda token: print(token, end="", flush=True)
     system_prompt = build_system_prompt(repo_map, plan=args.plan)
-    if args.verify:
+    if args.verify or args.allowed_file:
         system_prompt += (
-            "\n\nConfigured tests run automatically after each successful file-edit batch. "
-            "Use write_file or edit_file for edits. Read the test result in the "
-            "edit tool response. If a check fails, fix the code and edit again "
-            "before finishing."
+            "\n\nConfigured checks run automatically after each successful file-edit batch. "
+            "Read the result in the edit tool response. If a check fails, "
+            "fix the files and edit or delete again before finishing."
         )
     usage_tracker = ApiUsageTracker()
     provider = OpenAIProvider(
@@ -130,12 +142,21 @@ def _cmd_run(args: argparse.Namespace) -> int:
         "mindev-verify:local" if args.verify else "python:3.13-slim"
     )
     sandbox = DockerSandbox(host_dir=str(workspace), image=docker_image) if needs_docker else None
-    verifier = EditVerifier(args.verify, sandbox) if args.verify else None
+    try:
+        scope = FileScopeCheck(
+            workspace, args.allowed_file,
+            ignored_files=tuple(p for p in (session_path, trace_path, usage_path) if p),
+        ) if args.allowed_file else None
+    except (AccessDenied, ValueError, OSError) as exc:
+        print(f"Error: invalid --allowed-file: {exc}", file=sys.stderr)
+        return 2
+    verifier = EditVerifier(args.verify, sandbox, scope=scope) if args.verify or scope else None
     registry_tools = [ReadTool(file_access)]
     if not args.plan:
         registry_tools += [
             WriteFileTool(snapshots, file_access),
             EditFileTool(snapshots, file_access),
+            DeleteFileTool(snapshots, file_access),
         ]
         if not args.no_bash:
             registry_tools.append(BashTool(sandbox))
@@ -267,6 +288,10 @@ def build_parser() -> argparse.ArgumentParser:
     run_p.add_argument(
         "--verify", action="append", default=[], metavar="COMMAND",
         help="Run COMMAND in Docker after each successful edit batch; repeatable.",
+    )
+    run_p.add_argument(
+        "--allowed-file", action="append", default=[], metavar="PATH",
+        help="Permit file-tool writes only to PATH and check scope after edits; repeatable.",
     )
     run_p.add_argument(
         "--no-bash",

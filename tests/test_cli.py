@@ -83,6 +83,8 @@ def test_cli_rejects_local_bash_and_host_mcp(monkeypatch, capsys, tmp_path):
     assert "--checkpoint is unavailable" in capsys.readouterr().err
     assert main(["run", "--plan", "--verify", "python -m pytest -q", "task"]) == 2
     assert "read-only plan mode" in capsys.readouterr().err
+    assert main(["run", "--allowed-file", "a.py", "task"]) == 2
+    assert "requires --no-bash" in capsys.readouterr().err
     monkeypatch.setattr(mindev.cli.shutil, "which", lambda name: None)
     assert main(["run", "--no-bash", "--verify", "python -m pytest -q", "task"]) == 2
     assert "Docker is required" in capsys.readouterr().err
@@ -160,3 +162,54 @@ def test_cli_verifier_uses_same_copy_without_exposing_bash(monkeypatch, tmp_path
     command = seen["verifier"]._sandbox.build_command("python -m pytest tests/test_tools.py -q")
     assert f"type=bind,source={workspace},target=/workspace" in command
     assert "mindev-verify:local" in command
+
+
+def test_cli_scope_verifier_works_without_docker(monkeypatch, capsys, tmp_path):
+    import dotenv
+    import mindev.agent.loop
+    import mindev.llm.openai
+
+    monkeypatch.setattr(dotenv, "load_dotenv", lambda *a, **k: None)
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "allowed.py").write_text("before", encoding="utf-8")
+    tests = tmp_path / "tests"
+    tests.mkdir()
+    (tests / "test_tools.py").write_text("sentinel", encoding="utf-8")
+    workspace = tmp_path.parent / f"{tmp_path.name}-scope"
+    seen = {}
+
+    class FakeProvider:
+        def __init__(self, **kwargs):
+            pass
+
+    class FakeLoop:
+        def __init__(self, provider, tools, **kwargs):
+            seen["verifier"] = kwargs["verifier"]
+            seen["tools"] = [schema["function"]["name"] for schema in tools.schemas()]
+            seen["read"] = tools.run("read_file", {"path": "tests/test_tools.py"})
+            seen["blocked"] = tools.run(
+                "write_file", {"path": "tests/test_tools.py", "content": "changed"},
+            )
+
+        def run(self, task):
+            return "done"
+
+    monkeypatch.setattr(mindev.llm.openai, "OpenAIProvider", FakeProvider)
+    monkeypatch.setattr(mindev.agent.loop, "AgentLoop", FakeLoop)
+    assert main(["run", "--yes", "--no-repomap", "--no-bash",
+                 "--output-dir", str(workspace), "--allowed-file", "allowed.py",
+                 "task"]) == 0
+    assert seen["verifier"].commands == ()
+    assert seen["verifier"]._sandbox is None
+    assert seen["verifier"]._scope.unexpected_changes() == []
+    assert "delete_file" in seen["tools"]
+    assert "sentinel" in seen["read"]
+    assert "outside allowed write set" in seen["blocked"]
+    assert (workspace / "tests" / "test_tools.py").read_text(encoding="utf-8") == "sentinel"
+
+    invalid = tmp_path.parent / f"{tmp_path.name}-invalid-scope"
+    assert main(["run", "--yes", "--no-repomap", "--no-bash",
+                 "--output-dir", str(invalid), "--allowed-file", "../outside.py",
+                 "task"]) == 2
+    assert "invalid --allowed-file" in capsys.readouterr().err

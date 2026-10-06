@@ -44,7 +44,7 @@ class WriteFileTool(Tool):
         if not path:
             return "Error: path is required."
         try:
-            safe_path = self._access.resolve(path)
+            safe_path = self._access.resolve_write(path)
         except AccessDenied as exc:
             return f"Error: {exc}"
         if self._snapshots:
@@ -89,7 +89,7 @@ class EditFileTool(Tool):
         if not old:
             return "Error: old_string must not be empty."
         try:
-            safe_path = self._access.resolve(path)
+            safe_path = self._access.resolve_write(path)
             with open(safe_path, encoding="utf-8") as f:
                 original = f.read()
         except AccessDenied as exc:
@@ -116,3 +116,37 @@ class EditFileTool(Tool):
         except OSError as exc:
             return f"Error: could not write {path}: {exc}"
         return f"Edited {path}: replaced 1 occurrence."
+
+
+class DeleteFileTool(Tool):
+    name = "delete_file"
+    description = "Delete a regular file inside the workspace. Environment files and symbolic links are blocked."
+    risk = "write"
+
+    def __init__(self, snapshots: SnapshotStore | None = None,
+                 access: WorkspacePathPolicy | None = None) -> None:
+        self._snapshots = snapshots
+        self._access = access or WorkspacePathPolicy(os.getcwd())
+
+    def parameters(self) -> dict:
+        return {
+            "type": "object",
+            "properties": {"path": {"type": "string"}},
+            "required": ["path"],
+        }
+
+    def run(self, arguments: dict) -> str:
+        path = arguments.get("path", "")
+        try:
+            safe_path = self._access.resolve_write(path)
+        except AccessDenied as exc:
+            return f"Error: {exc}"
+        if not safe_path.is_file():
+            return f"Error: file not found: {path}"
+        if self._snapshots:
+            self._snapshots.snapshot(str(safe_path))
+        try:
+            safe_path.unlink()
+        except OSError as exc:
+            return f"Error: could not delete {path}: {exc}"
+        return f"Deleted {path}."
