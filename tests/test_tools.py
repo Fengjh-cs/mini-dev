@@ -2,6 +2,7 @@ from mindev.tools.access import WorkspacePathPolicy
 from mindev.tools.bash import BashTool
 from mindev.tools.read import ReadTool
 from mindev.tools.registry import ToolRegistry
+from mindev.sandbox.local import LocalSandbox
 
 
 def test_read_tool_returns_numbered_lines(tmp_path):
@@ -18,12 +19,12 @@ def test_read_tool_missing_file(tmp_path):
 
 
 def test_bash_tool_runs_echo():
-    out = BashTool().run({"command": "echo hello"})
+    out = BashTool(LocalSandbox()).run({"command": "echo hello"})
     assert "hello" in out
 
 
 def test_registry_schemas_and_run():
-    reg = ToolRegistry([ReadTool(), BashTool()])
+    reg = ToolRegistry([ReadTool(), BashTool(LocalSandbox())])
     schemas = reg.schemas()
     names = [s["function"]["name"] for s in schemas]
     assert names == ["read_file", "bash"]

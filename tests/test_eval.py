@@ -2,6 +2,7 @@ import os
 
 from mindev.eval import Task, default_tasks, run_eval
 from mindev.llm.base import LLMProvider, ToolCall, Turn
+from mindev.sandbox.local import LocalSandbox
 
 
 class ScriptedProvider(LLMProvider):
@@ -47,7 +48,8 @@ def test_eval_all_pass_with_scripted_provider(tmp_path):
             Turn("done", []),
         ],
     ]
-    results = run_eval(_factory_with(scripts), default_tasks(), str(tmp_path))
+    results = run_eval(_factory_with(scripts), default_tasks(), str(tmp_path),
+                       sandbox_factory=lambda d: LocalSandbox(cwd=d))
     assert [r.name for r in results] == ["write_file", "edit_file", "bash"]
     assert all(r.passed for r in results)
 

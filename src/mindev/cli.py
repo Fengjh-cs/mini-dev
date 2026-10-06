@@ -2,8 +2,9 @@
 
 import argparse
 import os
-import shlex
+import shutil
 import sys
+from pathlib import Path
 
 
 def _print_tool_call(call) -> None:
@@ -32,6 +33,23 @@ def _cmd_run(args: argparse.Namespace) -> int:
         )
         return 1
 
+    if args.checkpoint:
+        print("Error: --checkpoint is unavailable for isolated runs; review the saved workspace instead.",
+              file=sys.stderr)
+        return 2
+    if args.mcp:
+        print("Error: host MCP servers are unavailable in isolated runs.", file=sys.stderr)
+        return 2
+    if not args.plan and not args.no_bash:
+        if args.sandbox != "docker":
+            print("Error: bash requires --sandbox docker; use --no-bash without Docker.",
+                  file=sys.stderr)
+            return 2
+        if shutil.which("docker") is None:
+            print("Error: Docker is required for bash; install Docker or use --no-bash.",
+                  file=sys.stderr)
+            return 2
+
     from .agent.loop import AgentLoop
     from .agent.permissions import Mode, PermissionPolicy
     from .agent.subagent import EXPLORE_INSTRUCTIONS, ExploreSubagent
@@ -39,8 +57,8 @@ def _cmd_run(args: argparse.Namespace) -> int:
     from .context.repomap import RepoMap
     from .llm.openai import OpenAIProvider
     from .sandbox.docker import DockerSandbox
-    from .sandbox.local import LocalSandbox
-    from .tools.access import WorkspacePathPolicy
+    from .sandbox.workspace import create_workspace
+    from .tools.access import AccessDenied, WorkspacePathPolicy
     from .tools.bash import BashTool
     from .tools.edit import EditFileTool, WriteFileTool
     from .tools.explore import ExploreTool
@@ -48,8 +66,28 @@ def _cmd_run(args: argparse.Namespace) -> int:
     from .tools.registry import ToolRegistry
     from .tools.snapshot import SnapshotStore
 
+    source = os.getcwd()
+    try:
+        workspace = create_workspace(source, args.output_dir)
+    except (OSError, ValueError) as exc:
+        print(f"Error: could not create isolated workspace: {exc}", file=sys.stderr)
+        return 2
+
+    file_access = WorkspacePathPolicy(workspace)
+
+    def artifact_path(raw: str) -> str:
+        path = Path(raw)
+        return str(path) if path.is_absolute() else str(file_access.resolve(raw))
+
+    try:
+        session_path = artifact_path(args.session) if args.session else None
+        trace_path = artifact_path(args.trace) if args.trace else None
+    except AccessDenied as exc:
+        print(f"Error: artifact path {exc}", file=sys.stderr)
+        return 2
+
     mode = Mode.READONLY if args.plan else Mode.READWRITE
-    repo_map = "" if args.no_repomap else RepoMap().build(os.getcwd())
+    repo_map = "" if args.no_repomap else RepoMap().build(str(workspace))
     on_token = None
     if args.stream:
         on_token = lambda token: print(token, end="", flush=True)
@@ -60,23 +98,21 @@ def _cmd_run(args: argparse.Namespace) -> int:
     )
 
     session_store = None
-    if args.session:
+    if session_path:
         from .agent.session import SessionStore
 
-        session_store = SessionStore(args.session)
+        session_store = SessionStore(session_path)
         session_store.load(provider)
 
     snapshots = SnapshotStore()
-    file_access = WorkspacePathPolicy(os.getcwd())
     registry_tools = [ReadTool(file_access)]
     if not args.plan:
-        sandbox = DockerSandbox() if args.sandbox == "docker" else LocalSandbox()
         registry_tools += [
             WriteFileTool(snapshots, file_access),
             EditFileTool(snapshots, file_access),
         ]
         if not args.no_bash:
-            registry_tools.append(BashTool(sandbox))
+            registry_tools.append(BashTool(DockerSandbox(host_dir=str(workspace))))
         registry_tools.append(
             ExploreTool(
                 ExploreSubagent(
@@ -86,28 +122,16 @@ def _cmd_run(args: argparse.Namespace) -> int:
             )
         )
 
-    mcp_clients = []
-    if args.mcp:
-        from .tools.mcp import McpClient, McpTool
-
-        for spec in args.mcp:
-            parts = shlex.split(spec)
-            if not parts:
-                continue
-            client = McpClient(command=parts[0], args=parts[1:])
-            mcp_clients.append(client)
-            registry_tools += [McpTool(client, d) for d in client.list_tools()]
-
     tools = ToolRegistry(registry_tools)
 
     approver = None if args.yes else _interactive_approve
     policy = PermissionPolicy(mode=mode, approver=approver)
     compact_threshold = args.compact_threshold if args.compact_threshold > 0 else None
     recorder = None
-    if args.trace:
+    if trace_path:
         from .agent.trace import TraceRecorder
 
-        recorder = TraceRecorder(args.trace)
+        recorder = TraceRecorder(trace_path)
     loop = AgentLoop(
         provider,
         tools,
@@ -117,29 +141,13 @@ def _cmd_run(args: argparse.Namespace) -> int:
         recorder=recorder,
     )
 
-    checkpoint_hash = None
-    if args.checkpoint:
-        from .agent.checkpoint import GitCheckpoint
-
-        cp = GitCheckpoint(cwd=os.getcwd())
-        checkpoint_hash = cp.commit()
-        if checkpoint_hash:
-            print(
-                f"[checkpoint] committed {checkpoint_hash[:7]} — "
-                f"revert with: git reset --hard {checkpoint_hash[:7]}"
-            )
-        else:
-            print("[checkpoint] clean tree, nothing to commit")
-
     task = " ".join(args.task)
-    print(f"Task: {task}\n[mode: {mode.value}]\n", flush=True)
+    print(f"Task: {task}\n[mode: {mode.value}]\n[workspace: {workspace}]\n", flush=True)
     try:
         result = loop.run(task)
     finally:
         if session_store is not None:
             session_store.save(provider)
-        for client in mcp_clients:
-            client.close()
     print("\n" + "=" * 40)
     print(result)
     if recorder is not None:
@@ -155,6 +163,11 @@ def _cmd_eval(args: argparse.Namespace) -> int:
     from dotenv import load_dotenv
 
     load_dotenv()
+
+    if shutil.which("docker") is None:
+        print("Error: Docker is required for the built-in bash evaluation task.",
+              file=sys.stderr)
+        return 2
 
     if not os.getenv("OPENAI_API_KEY"):
         print(
@@ -204,8 +217,12 @@ def build_parser() -> argparse.ArgumentParser:
     run_p.add_argument(
         "--sandbox",
         choices=["local", "docker"],
-        default="local",
-        help="Where to run commands: local PowerShell on Windows, sh on Unix, or Docker sh.",
+        default="docker",
+        help="Docker is required for bash; local is only valid with --no-bash.",
+    )
+    run_p.add_argument(
+        "--output-dir", metavar="DIR",
+        help="Create the isolated workspace at DIR (must not already exist).",
     )
     run_p.add_argument(
         "--no-bash",
@@ -235,7 +252,7 @@ def build_parser() -> argparse.ArgumentParser:
     run_p.add_argument(
         "--checkpoint",
         action="store_true",
-        help="Commit current changes before running, so edits can be reverted via git.",
+        help="Unavailable in isolated runs; review the saved workspace instead.",
     )
     run_p.add_argument(
         "--compact-threshold",
@@ -261,8 +278,7 @@ def build_parser() -> argparse.ArgumentParser:
         action="append",
         default=[],
         metavar="COMMAND",
-        help="Connect to an MCP stdio server (repeatable). E.g. 'npx -y "
-        "@modelcontextprotocol/server-filesystem .'",
+        help="Unavailable in isolated runs because MCP servers execute on the host.",
     )
     run_p.set_defaults(func=_cmd_run)
 

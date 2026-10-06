@@ -15,3 +15,16 @@ jobs:
           python-version: "3.13"
       - run: pip install -e ".[dev]"
       - run: pytest -q
+
+  docker-isolation:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - run: pip install -e ".[dev]"
+      - run: docker pull python:3.13-slim
+      - run: pytest tests/test_sandbox.py::test_docker_command_writes_only_to_isolated_copy -q
+        env:
+          MINIDEV_REQUIRE_DOCKER: "1"

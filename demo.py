@@ -14,7 +14,6 @@ sys.path.insert(0, str(Path(__file__).resolve().parent / "src"))
 from mindev.agent.loop import AgentLoop
 from mindev.context.repomap import RepoMap
 from mindev.llm.base import LLMProvider, ToolCall, Turn
-from mindev.tools.bash import BashTool
 from mindev.tools.edit import EditFileTool, WriteFileTool
 from mindev.tools.read import ReadTool
 from mindev.tools.registry import ToolRegistry
@@ -54,14 +53,14 @@ def main() -> int:
     turns = [
         Turn("", [ToolCall("c1", "write_file", {"path": "greeting.txt", "content": "hello"})]),
         Turn("", [ToolCall("c2", "edit_file", {"path": "greeting.txt", "old_string": "hello", "new_string": "hello world"})]),
-        Turn("", [ToolCall("c3", "bash", {"command": "echo hello"})]),
-        Turn("Done: wrote greeting.txt, edited it, and ran a command.", []),
+        Turn("", [ToolCall("c3", "read_file", {"path": "greeting.txt"})]),
+        Turn("Done: wrote greeting.txt, edited it, and read it back.", []),
     ]
     original = os.getcwd()
     with tempfile.TemporaryDirectory() as d:
         os.chdir(d)
         try:
-            tools = ToolRegistry([ReadTool(), WriteFileTool(), EditFileTool(), BashTool()])
+            tools = ToolRegistry([ReadTool(), WriteFileTool(), EditFileTool()])
             result = AgentLoop(ScriptedProvider(turns), tools, observer=_observer).run(
                 "create and edit a greeting file"
             )

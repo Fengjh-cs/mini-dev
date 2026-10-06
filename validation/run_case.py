@@ -8,6 +8,7 @@ import argparse
 import hashlib
 import json
 import os
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -327,30 +328,40 @@ def run_case(case_id: int, output_root: Path, model_override: str | None,
         agent_env = os.environ.copy()
         agent_env["PYTHONPATH"] = str(SOURCE / "src") + os.pathsep + agent_env.get("PYTHONPATH", "")
         trace = run_dir / "trace.jsonl"
+        agent_workspace = run_dir / "agent-workspace"
         agent_cmd = [sys.executable, "-m", "mindev.cli", "run", "--yes",
-                     "--no-bash", "--model", model, "--trace", str(trace), case["prompt"]]
+                     "--no-bash", "--output-dir", str(agent_workspace),
+                     "--model", model, "--trace", str(trace), case["prompt"]]
         result["agent_command"] = ["<python>", *agent_cmd[1:]]
         result["agent"] = execute(agent_cmd, checkout, agent_env,
                                   run_dir / "agent.stdout.log", run_dir / "agent.stderr.log", timeout)
         result["tool_calls"] = count_tool_calls(trace)
         result["trace_file"] = "trace.jsonl"
 
+        if not agent_workspace.is_dir():
+            raise RuntimeError("Agent did not create its isolated workspace")
+        # Add independent Git metadata only after the Agent has finished, so
+        # grading can compare with BASELINE without exposing it to the Agent.
+        shutil.copytree(checkout / ".git", agent_workspace / ".git")
+        result["source_checkout"] = str(checkout)
+        result["checkout"] = str(agent_workspace)
+
         test_cmd = [sys.executable, "-m", "pytest", *case["tests"], "-q"]
         result["test_command"] = ["<python>", *test_cmd[1:]]
         test_env = os.environ.copy()
-        test_env["PYTHONPATH"] = str(checkout / "src") + os.pathsep + test_env.get("PYTHONPATH", "")
+        test_env["PYTHONPATH"] = str(agent_workspace / "src") + os.pathsep + test_env.get("PYTHONPATH", "")
         test_env.pop("OPENAI_API_KEY", None)
-        result["tests"] = execute(test_cmd, checkout, test_env,
+        result["tests"] = execute(test_cmd, agent_workspace, test_env,
                                   run_dir / "tests.stdout.log", run_dir / "tests.stderr.log", test_timeout)
-        result["changes"] = collect_changes(checkout, run_dir)
+        result["changes"] = collect_changes(agent_workspace, run_dir)
         automatic = None
         if case["grading"] == "automatic":
             checks_file = run_dir / "automatic_checks.json"
             checker_cmd = [sys.executable, str(SOURCE / "validation" / "checks.py"),
-                           "--case", str(case_id), "--checkout", str(checkout),
+                           "--case", str(case_id), "--checkout", str(agent_workspace),
                            "--baseline", BASELINE, "--scratch-root", str(run_dir),
                            "--output", str(checks_file)]
-            automatic = execute(checker_cmd, checkout, test_env,
+            automatic = execute(checker_cmd, agent_workspace, test_env,
                                 run_dir / "checker.stdout.log", run_dir / "checker.stderr.log", test_timeout)
             if checks_file.exists():
                 automatic["result"] = json.loads(checks_file.read_text(encoding="utf-8"))

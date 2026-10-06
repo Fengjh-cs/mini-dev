@@ -23,10 +23,11 @@ MINIDEV_MODEL=deepseek-chat
 ## 1. 冒烟测试（确认链路通）
 
 ```bash
-.venv/Scripts/mindev run --yes "读一下 README.md，用一句话总结它讲了什么"
+.venv/Scripts/mindev run --yes --no-bash "读一下 README.md，用一句话总结它讲了什么"
 ```
 
 - 预期：看到 `-> read_file(...)` 工具调用，然后输出总结。
+- 运行会打印隔离工作副本路径；源仓库不会被 Agent 编辑。
 - 记录：✅ / ❌，失败则贴报错。
 
 ## 2. 跑内置评测（拿到真实通过率）
@@ -34,6 +35,8 @@ MINIDEV_MODEL=deepseek-chat
 ```bash
 .venv/Scripts/mindev eval --judge
 ```
+
+> 内置评测包含 bash 任务，需先安装 Docker 并准备本地 `python:3.13-slim` 镜像。
 
 - 记录：`X/3 passed`、`avg score`。
 - 简历第一个硬数字：**eval 通过率 X/3**。
@@ -44,9 +47,9 @@ MINIDEV_MODEL=deepseek-chat
 
 | # | 任务 | 命令 |
 |---|------|------|
-| 1 | 加一个函数 | `mindev run --yes "在 src/mindev/tools/read.py 里加一个 read_lines(path, n) 函数，返回前 n 行"` |
-| 2 | 改注释 | `mindev run --yes "把 src/mindev/context/repomap.py 里 estimate_tokens 的注释改得更准确"` |
-| 3 | 改逻辑 | `mindev run --yes "把 src/mindev/tools/read.py 的 MAX_OUTPUT_CHARS 从 20000 改成 10000"` |
+| 1 | 加一个函数 | `mindev run --yes --no-bash "在 src/mindev/tools/read.py 里加一个 read_lines(path, n) 函数，返回前 n 行"` |
+| 2 | 改注释 | `mindev run --yes --no-bash "把 src/mindev/context/repomap.py 里 estimate_tokens 的注释改得更准确"` |
+| 3 | 改逻辑 | `mindev run --yes --no-bash "把 src/mindev/tools/read.py 的 MAX_OUTPUT_CHARS 从 20000 改成 10000"` |
 
 每个任务记录：
 
@@ -56,19 +59,19 @@ MINIDEV_MODEL=deepseek-chat
 | 2 | | | |
 | 3 | | | |
 
-> ⚠️ 在**临时分支**上跑：`git checkout -b validation`，跑完 `git diff` 看它改得对不对，再 `git reset --hard && git checkout main` 丢弃，别污染 main。
+> 每次运行会生成独立工作副本。记录 CLI 打印的副本路径，在副本中检查结果；需要固定位置时使用 `--output-dir DIR`。不会自动合并到源仓库。
 
 ## 4. 测上下文压缩收益（token 数据）
 
 ```bash
 # 开压缩（故意把阈值调小到 2000，便于观察压缩行为）
-.venv/Scripts/mindev run --yes --compact-threshold 2000 --trace trace_on.jsonl "逐行解释 src/mindev/agent/loop.py 的 run 方法"
+.venv/Scripts/mindev run --yes --no-bash --compact-threshold 2000 --trace trace_on.jsonl "逐行解释 src/mindev/agent/loop.py 的 run 方法"
 
 # 关压缩
-.venv/Scripts/mindev run --yes --compact-threshold 0 --trace trace_off.jsonl "逐行解释 src/mindev/agent/loop.py 的 run 方法"
+.venv/Scripts/mindev run --yes --no-bash --compact-threshold 0 --trace trace_off.jsonl "逐行解释 src/mindev/agent/loop.py 的 run 方法"
 ```
 
-- 对比 `trace_on.jsonl` 和 `trace_off.jsonl` 里每轮记录的 `tokens` 字段。
+- 分别从两次运行打印的工作副本路径中读取 `trace_on.jsonl` 和 `trace_off.jsonl`，对比每轮记录的 `tokens` 字段。
 - 简历第二个硬数字：**上下文压缩使 token 下降 X%**。
 
 ## 5. 收集 bad case（面试必问）

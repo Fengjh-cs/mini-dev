@@ -228,17 +228,30 @@ def test_runner_uses_current_agent_and_checks_baseline_code(tmp_path, monkeypatc
 
     def fake_execute(command, cwd, env, stdout_path, stderr_path, timeout):
         calls.append((command, cwd, env))
+        if len(calls) == 1:
+            from mindev.sandbox.workspace import create_workspace
+
+            agent_workspace = create_workspace(cwd, command[command.index("--output-dir") + 1])
+            candidate = agent_workspace / "src/mindev/tools/read.py"
+            candidate.write_text(candidate.read_text(encoding="utf-8") + "\n# agent edit\n",
+                                 encoding="utf-8")
         return {"exit_code": 0, "timed_out": False, "seconds": 0}
 
     monkeypatch.setattr(run_case, "execute", fake_execute)
     path = run_case.run_case(1, tmp_path, "test-model", 10, 10)
     result = json.loads(path.read_text(encoding="utf-8"))
     checkout = path.parent / "checkout"
+    agent_workspace = path.parent / "agent-workspace"
     assert len(calls) == 3  # Agent, original tests, deterministic checker
     assert "--no-bash" in calls[0][0]
+    assert calls[0][0][calls[0][0].index("--output-dir") + 1] == str(agent_workspace)
     assert calls[0][1] == checkout
     assert calls[0][2]["PYTHONPATH"].split(os.pathsep)[0] == str(run_case.SOURCE / "src")
-    assert calls[1][2]["PYTHONPATH"].split(os.pathsep)[0] == str(checkout / "src")
-    assert calls[2][2]["PYTHONPATH"].split(os.pathsep)[0] == str(checkout / "src")
+    assert calls[1][2]["PYTHONPATH"].split(os.pathsep)[0] == str(agent_workspace / "src")
+    assert calls[2][2]["PYTHONPATH"].split(os.pathsep)[0] == str(agent_workspace / "src")
+    assert result["checkout"] == str(agent_workspace)
+    assert result["source_checkout"] == str(checkout)
+    assert result["changes"]["tracked_files"] == ["src/mindev/tools/read.py"]
+    assert "# agent edit" not in (checkout / "src/mindev/tools/read.py").read_text(encoding="utf-8")
     assert result["checkout_head"] == run_case.BASELINE
     assert len(result["agent_source_sha256"]) == 64

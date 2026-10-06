@@ -10,10 +10,10 @@
 - **Provider 抽象 + 流式输出**：Chat Completions + `OPENAI_BASE_URL` 一行切换 OpenAI / DeepSeek / OpenRouter；`--stream` 流式输出。
 - **上下文工程**：多语言 tree-sitter RepoMap（Py/JS/Go）+ 超阈值自动 compaction（摘要即工作记忆）。
 - **工具可靠性**：jsonschema 入参校验，坏参数结构化报错回灌模型自纠。
-- **结构化编辑 + 回滚**：`edit_file` 精确替换（唯一性校验、原子写）+ 快照回滚 + git 检查点（`--checkpoint`）。
-- **沙箱 + 权限 + Subagent**：Docker 沙箱 + Plan/Act 双模式 + 风险分级审批 + 只读探索子 agent。
+- **结构化编辑 + 回滚**：`edit_file` 精确替换（唯一性校验）+ 快照回滚；每次运行保留独立工作副本供审阅。
+- **沙箱 + 权限 + Subagent**：独立工作副本 + Docker 命令沙箱 + Plan/Act 双模式 + 风险分级审批 + 只读探索子 agent。
 - **评测体系**：文件系统硬校验 + LLM-as-Judge 软评分 + 通过率/平均分指标。
-- **会话 + 观测 + MCP**：`--session` 断点续跑、`--trace` JSONL 追踪、自研 MCP stdio 客户端接外部工具。
+- **会话 + 观测**：`--session` 断点续跑、`--trace` JSONL 追踪；MCP 客户端代码保留，但隔离运行暂不允许启动宿主机 MCP server。
 - **工程化**：79 个 mock 测试（不依赖 API key）、GitHub Actions CI、MIT 协议。
 
 ## 状态
@@ -37,18 +37,18 @@ cp .env.example .env                              # 填入 OPENAI_API_KEY
 ## 使用
 
 ```bash
-mindev run "读一下 README.md，用一句话总结它讲了什么"
-mindev run "列出当前目录的文件"
+mindev run --no-bash "读一下 README.md，用一句话总结它讲了什么"
+mindev run --no-bash "列出当前目录的文件"
 ```
 
 > 默认模型 `gpt-5-mini`（可用 `MINIDEV_MODEL` 环境变量覆盖；`gpt-5` 系列里带 `-codex` 的模型需更高权限，普通账号无访问权限）。
 > 支持任意 OpenAI 兼容后端：设 `OPENAI_BASE_URL` 即可切换 DeepSeek（`https://api.deepseek.com`）、OpenRouter（`https://openrouter.ai/api/v1`）等。
-> `bash` 工具的实际语法随执行环境变化：Windows 的 `--sandbox local` 使用 PowerShell 5.1，Unix 使用 `/bin/sh`，`--sandbox docker` 在容器内使用 `sh`。工具说明会告诉模型当前语法；`--no-bash` 可禁用命令工具。
-> 本地命令在宿主机运行；`cwd` 只是起始工作目录，命令仍能访问目录外文件。Docker 仅隔离命令进程，文件读写工具仍在宿主机执行。
+> 每次 `mindev run` 都先创建独立工作副本，源仓库不会自动改动。CLI 输出副本路径；可用 `--output-dir DIR` 指定一个尚不存在的目录，运行后检查其中的结果。副本不复制 `.env`、`.env.*`、`.git`、虚拟环境、常见缓存和文件系统链接。
+> `bash` 默认在 Docker 容器中使用 POSIX `sh`，只把工作副本挂载到 `/workspace`；需先安装 Docker 并准备好本地 `python:3.13-slim` 镜像。Docker 不可用时加 `--no-bash`，文件工具仍可在副本中工作。`--sandbox local` 与 bash 同时使用会被拒绝。
 > 每次运行会自动用 tree-sitter 生成 RepoMap（文件树 + 顶层函数/类 + 行号）注入系统提示词，加 `--no-repomap` 可关闭。
 > 加 `--plan` 进入只读规划模式（不改文件、不跑命令，只产出方案）；默认对写文件/跑命令做交互确认，加 `--yes` 跳过确认。
 
-> `read_file`、`write_file`、`edit_file` 只接受启动时工作目录内的路径；拒绝 `.env`、`.env.*`（允许 `.env.example`）、工作目录外路径和符号链接路径。此限制只覆盖内置文件工具；本地命令和外部 MCP 工具的隔离将在后续阶段处理。运行不可信任务时可用 `--no-bash` 禁用内置命令工具。
+> `read_file`、`write_file`、`edit_file` 只接受工作副本内的路径；拒绝 `.env`、`.env.*`（允许 `.env.example`）、副本外路径和符号链接路径。`--mcp` 与 `--checkpoint` 在隔离运行中会被拒绝。相对的 `--trace`、`--session` 路径写入副本；显式绝对路径按用户指定位置写入。
 
 ## Demo
 
@@ -62,9 +62,9 @@ python demo.py                                # RepoMap + 脚本化 agent 跑通
 **需要 API key**（先配好 `.env`）：
 
 ```bash
-mindev run "读一下 README.md，用一句话总结"             # 普通执行
+mindev run --no-bash "读一下 README.md，用一句话总结"   # 无 Docker 的普通执行
 mindev run --plan "实现一个 xxx 功能，先给我方案"        # 只读规划
-mindev run --yes --mcp "npx -y @modelcontextprotocol/server-filesystem ." "列出仓库文件"  # 挂 MCP server
+mindev run --no-bash --output-dir ../agent-result "修改一个文件"    # 无 Docker 时只用文件工具
 mindev eval                                             # 内置评测
 ```
 
@@ -81,8 +81,10 @@ flowchart TD
     Registry --> Edit[write_file / edit_file]
     Registry --> Bash[bash]
     Registry --> Explore[explore subagent]
-    Registry --> MCP[MCP tools]
-    Bash --> Sandbox[Sandbox: local / docker]
+    CLI --> Workspace[Isolated workspace copy]
+    Registry --> Workspace
+    Bash --> Sandbox[Docker sandbox]
+    Sandbox --> Workspace
     Loop --> Permissions[Permissions: Plan/Act + approval]
     Loop --> Context[Context: RepoMap + compaction]
     Loop --> Session[Session store]

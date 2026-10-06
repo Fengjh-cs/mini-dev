@@ -1,7 +1,6 @@
 """Run a shell command via a sandbox."""
 
 from ..sandbox.base import Sandbox
-from ..sandbox.local import LocalSandbox
 from .base import Tool
 
 
@@ -13,8 +12,8 @@ class BashTool(Tool):
     )
     risk = "command"
 
-    def __init__(self, sandbox: Sandbox | None = None) -> None:
-        self._sandbox = sandbox or LocalSandbox()
+    def __init__(self, sandbox: Sandbox) -> None:
+        self._sandbox = sandbox
         self.description = (
             "Run a shell command and return its combined stdout/stderr. "
             "Use for listing files, running tests, git, or build commands. "

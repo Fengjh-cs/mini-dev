@@ -11,6 +11,8 @@ from collections.abc import Callable
 from dataclasses import dataclass
 
 from .agent.loop import AgentLoop
+from .sandbox.docker import DockerSandbox
+from .tools.access import WorkspacePathPolicy
 from .tools.bash import BashTool
 from .tools.edit import EditFileTool, WriteFileTool
 from .tools.read import ReadTool
@@ -56,11 +58,18 @@ class LLMJudge:
         return min(10, int(match.group())) / 10.0
 
 
-def _default_tools() -> ToolRegistry:
-    return ToolRegistry([ReadTool(), WriteFileTool(), EditFileTool(), BashTool()])
+def _default_tools(workdir: str, sandbox_factory=None) -> ToolRegistry:
+    access = WorkspacePathPolicy(workdir)
+    sandbox = (sandbox_factory(workdir) if sandbox_factory is not None
+               else DockerSandbox(host_dir=workdir))
+    return ToolRegistry([
+        ReadTool(access), WriteFileTool(access=access),
+        EditFileTool(access=access), BashTool(sandbox),
+    ])
 
 
-def run_eval(provider_factory, tasks, root, tools=None, judge=None) -> list[EvalResult]:
+def run_eval(provider_factory, tasks, root, tools=None, judge=None,
+             sandbox_factory=None) -> list[EvalResult]:
     """Run each task in its own subdirectory, then check + score the result."""
     results = []
     for task in tasks:
@@ -71,7 +80,7 @@ def run_eval(provider_factory, tasks, root, tools=None, judge=None) -> list[Eval
         original = os.getcwd()
         try:
             os.chdir(workdir)
-            loop = AgentLoop(provider_factory(), tools or _default_tools())
+            loop = AgentLoop(provider_factory(), tools or _default_tools(workdir, sandbox_factory))
             output = loop.run(task.prompt)
         finally:
             os.chdir(original)

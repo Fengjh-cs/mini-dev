@@ -1,5 +1,6 @@
 from mindev.eval import LLMJudge, EvalResult, Task, default_tasks, run_eval, summarize
 from mindev.llm.base import LLMProvider, ToolCall, Turn
+from mindev.sandbox.local import LocalSandbox
 
 
 class _Provider(LLMProvider):
@@ -66,6 +67,7 @@ def test_run_eval_attaches_judge_score(tmp_path):
             pass
 
     judge = LLMJudge(lambda: _Provider("Score: 9"))
-    results = run_eval(lambda: Scripted(), default_tasks(), str(tmp_path), judge=judge)
+    results = run_eval(lambda: Scripted(), default_tasks(), str(tmp_path), judge=judge,
+                       sandbox_factory=lambda d: LocalSandbox(cwd=d))
     assert all(r.passed for r in results)
     assert all(r.score == 0.9 for r in results)

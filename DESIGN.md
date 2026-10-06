@@ -122,3 +122,9 @@ mini-dev/
 - **Phase 4**：`pytest` 42 passed（新增 7 个权限测试：read 放行、只读拒绝 write/command、approver 允许/拒绝、拒绝后文件不变）；CLI 显示 `--plan` / `--yes`。
 - **Phase 5**：`pytest` 47 passed（MCP 3 + eval 2）；`python demo.py` 无 key 跑通 RepoMap + 脚本化 agent；新增 CI workflow + MIT LICENSE。
 - **面试增强（上下文压缩 / 工具校验 / LLM-Judge / 会话持久化 / 观测追踪 / 流式 / subagent / git 检查点 / 多语言 RepoMap）**：`pytest` 79 passed（新增 32 个测试）。
+
+## 当前隔离边界（阶段 3）
+
+`mindev run` 每次先把当前工作树复制到独立目录；`.env` 类文件、Git 元数据、虚拟环境、常见缓存和文件系统链接不进入副本。RepoMap、主 Agent 和探索子 Agent 的文件工具都以该副本为根。命令工具只通过 Docker 运行，容器只挂载副本、禁用网络，并使用只读根文件系统；无 Docker 时可用 `--no-bash` 运行文件任务。本地 shell、宿主机 MCP 和原仓库 Git checkpoint 不参与隔离运行。副本会保留供人工审阅，不会自动合并到源仓库。
+
+这是进程与挂载层面的隔离，依赖 Docker 的隔离能力；文件路径检查及复制过程仍有并发替换路径的竞态风险。开发机未安装 Docker 时，容器内越界写入负向测试会跳过；CI 有独立 Docker job 拉取镜像并强制执行该测试。
